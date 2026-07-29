@@ -1,0 +1,16 @@
+# priorityclasses.yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: llm-default
+value: 100
+globalDefault: false
+description: "Modelos LLM siempre-calientes; pueden ser desalojados por modelos de mayor prioridad si la GPU está ocupada."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: llm-priority
+value: 1000
+globalDefault: false
+description: "Modelos LLM cold-start/bajo demanda; desalojan a los de prioridad llm-default cuando necesitan la GPU."

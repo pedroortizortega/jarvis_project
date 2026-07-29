@@ -1,0 +1,21 @@
+# Model configuration for deep-research agent
+# Fixed model: terra-medium
+
+model:
+  provider: custom
+  model: terra-medium
+
+# Tool restrictions (only these toolsets allowed)
+allowed_toolsets:
+  - web
+
+# Blocked toolsets (commented out for clarity)
+# allowed_toolsets:
+#   - terminal  # BLOCKED
+#   - file      # BLOCKED
+#   - browser   # BLOCKED
+#   - delegation # BLOCKED
+#   - vision    # BLOCKED
+#   - tts       # BLOCKED
+#   - cronjob   # BLOCKED
+#   - memory    # BLOCKED

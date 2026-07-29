@@ -1,0 +1,45 @@
+version: 1
+provider: openai-codex
+base_url: https://chatgpt.com/backend-api/codex
+
+# Declarative Codex profile matrix. These are overlays applied to a clone of
+# the default Hermes profile by bootstrap-profiles.sh; credentials are excluded.
+profiles:
+  luna-low:
+    model: gpt-5.6-luna
+    reasoning_effort: low
+    description: "Fast classification, short summaries, simple lookups, and low-risk edits."
+  luna-medium:
+    model: gpt-5.6-luna
+    reasoning_effort: medium
+    description: "Routine single-file changes, focused debugging, and concise implementation plans."
+  luna-high:
+    model: gpt-5.6-luna-pro
+    reasoning_effort: high
+    description: "Bounded investigations that need more care but do not justify Terra."
+
+  terra-low:
+    model: gpt-5.6-terra
+    reasoning_effort: low
+    description: "Standard development questions where a stronger model improves reliability."
+  terra-medium:
+    model: gpt-5.6-terra
+    reasoning_effort: medium
+    description: "Default coding profile for multi-file features, test failures, and code review."
+  terra-high:
+    model: gpt-5.6-terra-pro
+    reasoning_effort: high
+    description: "Complex debugging, refactors with invariants, and security-sensitive implementation."
+
+  sol-low:
+    model: gpt-5.6-sol
+    reasoning_effort: low
+    description: "High-quality but time-bounded second opinion; use only when Luna or Terra is insufficient."
+  sol-medium:
+    model: gpt-5.6-sol
+    reasoning_effort: medium
+    description: "Architecture trade-offs, difficult reviews, and cross-system design proposals."
+  sol-high:
+    model: gpt-5.6-sol-pro
+    reasoning_effort: high
+    description: "Last-resort profile for critical, ambiguous, or high-impact engineering decisions."

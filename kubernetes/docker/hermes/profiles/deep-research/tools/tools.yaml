@@ -1,0 +1,24 @@
+# Tools configuration for deep-research agent
+# Only web-search and brave MCP are enabled
+
+enabled:
+  - name: web-search
+    description: Search the web for information
+    toolsets: [web]
+
+  - name: brave
+    description: Brave search engine via MCP
+    toolsets: [web]
+
+# Blocked tools (not in enabled list):
+# - terminal
+# - file
+# - browser
+# - delegate_task
+# - vision
+# - tts
+# - cronjob
+# - memory
+# - session_search
+# - clarify
+# - skills (except research-workflow)

@@ -1,0 +1,70 @@
+# vllm-big-model.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-big-model
+  namespace: llms
+spec:
+  replicas: 1   # KEDA sobreescribe esto dinámicamente (0 cuando no hay tráfico)
+  selector:
+    matchLabels: {app: vllm-big-model}
+  template:
+    metadata:
+      labels: {app: vllm-big-model}
+    spec:
+      nodeSelector:
+        workload: llm
+      priorityClassName: llm-priority
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model=Qwen/Qwen3.5-27B-GPTQ-Int4"   # ej. Qwen/Qwen3.5-27B-GPTQ-Int4, confirmar nombre exacto en HF
+            - "--quantization=awq"              # ajusta a gptq si el repo que elijas usa esa cuantización
+            - "--max-model-len=4096"            # corto a propósito: poco margen de VRAM en 16GB con un 27B en 4-bit
+            - "--gpu-memory-utilization=0.95"
+            - "--served-model-name=qwen3.5-27b"
+          ports: [{containerPort: 8000}]
+          volumeMounts:
+            - {name: models, mountPath: /root/.cache/huggingface}
+          resources:
+            requests: {cpu: "4", memory: 8Gi}
+            limits:
+              memory: 24Gi
+              nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 60
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vllm-models}   # reutiliza el mismo PVC de A8, o crea uno nuevo si preferís aislar el cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-big-model
+  namespace: llms
+spec:
+  selector: {app: vllm-big-model}
+  ports: [{port: 8000, targetPort: 8000}]
+  type: ClusterIP
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: vllm-big-model
+  namespace: llms
+spec:
+  hosts:
+    - vllm-big-model.llms.svc.cluster.local
+  scaleTargetRef:
+    name: vllm-big-model
+    kind: Deployment
+    apiVersion: apps/v1
+    service: vllm-big-model
+    port: 8000
+  replicas:
+    min: 0
+    max: 1
+  scaledownPeriod: 300   # segundos de inactividad antes de escalar a 0 (ajusta según cuán "de sobra" quieras que se sienta)

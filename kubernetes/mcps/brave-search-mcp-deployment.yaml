@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brave-search-mcp
+  labels:
+    app: brave-search-mcp
+    mcp: brave-search
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: brave-search-mcp
+  template:
+    metadata:
+      labels:
+        app: brave-search-mcp
+        mcp: brave-search
+    spec:
+      containers:
+      - name: brave-search-mcp
+        image: acuvity/mcp-server-brave-search:latest
+        imagePullPolicy: Always
+        env:
+        - name: BRAVE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: brave-api-key-secret
+              key: BRAVE_API_KEY
+        - name: BRAVE_MCP_TRANSPORT
+          value: "stdio"
+        ports:
+        - containerPort: 8080
+          name: mcp-stdio
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 512Mi
+            cpu: 500m
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: ghcr-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: brave-search-mcp-service
+  labels:
+    app: brave-search-mcp
+    mcp: brave-search
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: mcp-stdio
+  selector:
+    app: brave-search-mcp

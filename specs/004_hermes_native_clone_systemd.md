@@ -1055,6 +1055,32 @@ Obsidian movil son copias: nunca son autoridad de publicacion.
 La unidad se instala deshabilitada y solo se habilita despues de que una
 propuesta de prueba revisada se publique correctamente.
 
+### Exposicion en Obsidian
+
+El vault canonico NO vive dentro del vault personal de Obsidian. Se expone con
+un symlink, de modo que exista una sola copia y una sola verdad:
+
+```bash
+ln -s /opt/knowledge-vault/vault "$HOME/Documentos/Obsidian Vault/JARVIS"
+```
+
+El symlink lo crea el usuario humano, no el instalador: toca notas personales y
+esa decision es suya.
+
+Los permisos hacen cumplir el limite sin configuracion extra. Los archivos son
+`0640` de `knowledge-vault-publisher`, y el humano solo pertenece al grupo, asi
+que Obsidian los lee y no puede escribirlos. Editar una nota publicada desde
+Obsidian falla, que es lo correcto: la unica forma de cambiar el vault es
+proponer una revision y aprobarla.
+
+Advertencia operativa: una sesion de escritorio iniciada ANTES de que el usuario
+entrara al grupo `knowledge-vault` no tiene el grupo, y Obsidian vera
+`Permiso denegado` en esa carpeta. Requiere cerrar sesion y volver a entrar.
+
+Si mas adelante se sincroniza el vault personal con iCloud u Obsidian Sync,
+verificar que el cliente siga symlinks; si no lo hace, reemplazar el enlace por
+un bind mount de solo lectura.
+
 ## Rollback a Kubernetes
 
 Solo si el gateway systemd esta deshabilitado y detenido:

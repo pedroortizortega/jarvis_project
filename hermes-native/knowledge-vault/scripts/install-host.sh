@@ -70,8 +70,11 @@ chmod 0600 "$AUTHORIZED_KEYS"
 install -d -o "$MIRROR_USER" -g "$GROUP" -m 0750 /srv/git
 if [[ ! -d /srv/git/knowledge-vault.git ]]; then
   git init --bare -q -b main /srv/git/knowledge-vault.git
-  chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
 fi
+# git init leaves the repository world-readable. The parent directory already
+# blocks traversal, but the repository must not depend on that to stay private.
+chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
+chmod -R o= /srv/git/knowledge-vault.git
 say "/srv/git/knowledge-vault.git"
 say "$PREFIX/vault, $STATE/{proposals,pending,decisions,approved,publisher}"
 

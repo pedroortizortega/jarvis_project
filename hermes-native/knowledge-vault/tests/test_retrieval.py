@@ -1,6 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from knowledge_vault import retrieval
 
 from knowledge_vault.retrieval import Retriever, build_index
 
@@ -65,6 +68,19 @@ class RetrievalTests(unittest.TestCase):
             result = Retriever(vault, Path(root) / "state" / "absent.json").search("k3s")
             self.assertFalse(result.available)
             self.assertEqual((), result.hits)
+
+    def test_unchanged_notes_are_not_rehashed_on_every_search(self):
+        with tempfile.TemporaryDirectory() as root:
+            retriever, vault = self.retriever(root)
+            retriever.search("k3s")
+            with patch(
+                "knowledge_vault.retrieval._digest", wraps=retrieval._digest
+            ) as digest:
+                retriever.search("k3s")
+                self.assertEqual(0, digest.call_count, "unchanged notes were re-read")
+                (vault / "voice.md").write_text("# Voice\nRewritten.\n", encoding="utf-8")
+                self.assertFalse(retriever.search("k3s").available)
+                self.assertGreater(digest.call_count, 0)
 
     def test_semantic_signal_retrieves_what_lexical_matching_misses(self):
         def embedder(text):

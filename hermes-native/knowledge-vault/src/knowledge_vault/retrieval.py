@@ -21,14 +21,37 @@ def _digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def vault_revision(vault_directory):
-    """Revision of the published vault; any note change produces a new value."""
+def _signature(vault):
+    """Cheap stat-only fingerprint used to decide whether to re-read notes."""
+    return tuple(
+        sorted(
+            (str(path.relative_to(vault)), path.stat().st_mtime_ns, path.stat().st_size)
+            for path in vault.rglob("*.md")
+        )
+    )
+
+
+def vault_revision(vault_directory, cache=None):
+    """Revision of the published vault; any note change produces a new value.
+
+    Hashing every note on every query is the first thing that gets expensive as
+    the vault grows, so an optional cache short-circuits on an unchanged
+    stat signature. A note rewritten with the same size and a restored mtime
+    would evade the signature; that requires deliberately forged timestamps,
+    and `build_index` always recomputes the revision from content.
+    """
     vault = Path(vault_directory)
+    signature = _signature(vault)
+    if cache is not None and cache.get("signature") == signature:
+        return cache["revision"]
     entries = sorted(
         f"{path.relative_to(vault)}:{_digest(path.read_text(encoding='utf-8'))}"
         for path in vault.rglob("*.md")
     )
-    return _digest("\n".join(entries))
+    revision = _digest("\n".join(entries))
+    if cache is not None:
+        cache.update(signature=signature, revision=revision)
+    return revision
 
 
 def _fragments(path):
@@ -90,13 +113,14 @@ class Retriever:
         self.vault_directory = Path(vault_directory)
         self.index_path = Path(index_path)
         self.embedder = embedder
+        self._revision_cache = {}
 
     def search(self, query, limit=5):
         try:
             index = json.loads(self.index_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return RetrievalResult((), False, "index is unavailable")
-        if index.get("revision") != vault_revision(self.vault_directory):
+        if index.get("revision") != vault_revision(self.vault_directory, self._revision_cache):
             return RetrievalResult((), False, "index revision does not match the published vault")
         scored = [
             (self._score(query, fragment["text"]), fragment) for fragment in index["fragments"]

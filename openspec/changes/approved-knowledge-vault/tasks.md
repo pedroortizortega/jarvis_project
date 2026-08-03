@@ -63,9 +63,12 @@ Retarget/rebase any polluted child diff to its immediate parent before review.
 
 ## Deferred Coverage
 
-`PYTHONPATH=src python -m unittest discover -s tests` passes 17 unit tests
-(outbox 4, review 2, publisher 6, retrieval 5). The following remain deferred
-because the change's open questions are still open:
+`PYTHONPATH=src python -m unittest discover -s tests` passes 23 unit tests
+(outbox 5, review 6, publisher 6, retrieval 6). `PYTHONPATH=src python
+smoke/verify_vault.py` runs the host-local pieces as an operator meets them:
+the publisher as a real process with its exit code, retrieval over 500 notes,
+and a full review cycle. The following remain deferred because the change's
+open questions are still open:
 
 | Deferred | Blocked on | Current substitute |
 |---|---|---|

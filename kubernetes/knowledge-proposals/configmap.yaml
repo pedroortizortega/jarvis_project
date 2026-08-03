@@ -14,5 +14,8 @@ data:
   # Approved records are exported for the host publisher to pull; the cluster
   # never pushes into the vault.
   approved_export_enabled: "true"
+  # SQLite on a node-bound local-path PVC. Chosen over a dedicated database
+  # because the cluster runs none and proposal volume is tens per day.
+  database_url: "sqlite:////var/lib/proposals/proposals.db"
   listen_port: "8080"
   log_level: "info"

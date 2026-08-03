@@ -1,0 +1,15 @@
+# pvc.yaml
+# SQLite state for the proposal control plane. local-path is node-bound, and
+# SQLite has a single writer, so the API stays at one replica by design.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knowledge-proposals-state
+  namespace: knowledge-proposals
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

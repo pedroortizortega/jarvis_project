@@ -88,6 +88,19 @@ class ApprovedSpoolTests(unittest.TestCase):
             loaded = load_approved(spool)
         self.assertEqual([approved.proposal.id], [item.proposal.id for item in loaded])
 
+    def test_malformed_spool_entries_are_reported_not_silently_dropped(self):
+        reported = []
+        with tempfile.TemporaryDirectory() as root:
+            spool = Path(root)
+            (spool / "broken.json").write_text("{not json", encoding="utf-8")
+            (spool / "incomplete.json").write_text(json.dumps({"proposal": {}}), encoding="utf-8")
+            self.assertEqual([], load_approved(spool, on_failure=reported.append))
+        self.assertEqual(
+            [str(spool / "broken.json"), str(spool / "incomplete.json")],
+            [failure.proposal_id for failure in reported],
+        )
+        self.assertTrue(all(failure.reason for failure in reported))
+
 
 if __name__ == "__main__":
     unittest.main()

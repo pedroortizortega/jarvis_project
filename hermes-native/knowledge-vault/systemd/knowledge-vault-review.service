@@ -33,7 +33,9 @@ RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
-UMask=0027
+# 0007, not 0027: the human reviewer writes the decision inside the projected
+# file, so pending files must be group-writable for the knowledge-vault group.
+UMask=0007
 
 [Install]
 WantedBy=multi-user.target

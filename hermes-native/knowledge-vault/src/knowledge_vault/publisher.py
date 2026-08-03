@@ -100,6 +100,10 @@ class Publisher:
                 temporary.write(f"{record.proposal.markdown.strip()}\n")
                 temporary.flush()
                 os.fsync(temporary.fileno())
+            # Temporary files are created 0600 and os.replace preserves the
+            # mode, which would leave published notes unreadable to the
+            # read-only consumers in the vault group.
+            os.chmod(temporary.name, 0o640)
             os.replace(temporary.name, target)
         except OSError:
             Path(temporary.name).unlink(missing_ok=True)

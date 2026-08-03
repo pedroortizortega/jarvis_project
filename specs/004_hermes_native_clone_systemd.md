@@ -1097,11 +1097,23 @@ hay tercero que las almacene, y cifrarlas romperia justamente lo que se busca,
 que es leerlas en el movil. La frontera de confianza es la VPN, no el cifrado
 en reposo.
 
+Acceso SSH del cliente movil. `knowledge-vault-mirror` es el unico usuario del
+vault alcanzable por SSH, y por eso NO usa `nologin` como los otros: usa
+`git-shell`, que habilita comandos Git y niega la shell interactiva. Tiene home
+propio en `/var/lib/knowledge-vault/mirror` solo para alojar `authorized_keys`,
+que junto con `.ssh` queda `0700`/`0600` porque SSH rechaza cualquier permiso de
+escritura de grupo ahi.
+
 Requisitos en el telefono:
 
-1. Tailscale o WireGuard con trantor en la misma red.
-2. Working Copy clonando `ssh://knowledge-vault-mirror@trantor/srv/git/knowledge-vault.git`.
-3. Obsidian movil abriendo el directorio que Working Copy sincroniza.
+1. Tailscale o WireGuard con trantor en la misma tailnet.
+2. Pegar la clave publica de Working Copy en el `authorized_keys` de ese usuario.
+3. Working Copy clonando
+   `ssh://knowledge-vault-mirror@<host-tailscale>/srv/git/knowledge-vault.git`.
+4. Obsidian movil abriendo el directorio que Working Copy sincroniza.
+
+El instalador NUNCA trunca `authorized_keys`: se re-ejecuta seguido y no puede
+descartar claves ya agregadas.
 
 Consecuencia aceptada: si trantor esta apagada o el telefono esta fuera de la
 VPN, no hay sincronizacion. Es el precio de no entregarle el cerebro a un

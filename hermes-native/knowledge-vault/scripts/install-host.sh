@@ -29,11 +29,19 @@ say() { printf '  %s\n' "$*"; }
 echo "Accounts"
 getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
 say "group $GROUP"
-for user in "$PUBLISHER_USER" "$REVIEW_USER" "$MIRROR_USER"; do
+for user in "$PUBLISHER_USER" "$REVIEW_USER"; do
   getent passwd "$user" >/dev/null || useradd --system --no-create-home \
     --shell /usr/sbin/nologin --gid "$GROUP" "$user"
   say "user $user"
 done
+
+# The mirror user is reachable over SSH so VPN clients can clone, so it gets a
+# home for authorized_keys and git-shell instead of nologin: git commands work,
+# an interactive shell does not.
+getent passwd "$MIRROR_USER" >/dev/null || useradd --system \
+  --home-dir "$STATE/mirror" --shell /usr/bin/git-shell --gid "$GROUP" "$MIRROR_USER"
+usermod --home "$STATE/mirror" --shell /usr/bin/git-shell "$MIRROR_USER"
+say "user $MIRROR_USER (git-shell over SSH)"
 
 if [[ -n "$REVIEWER" ]]; then
   usermod -aG "$GROUP" "$REVIEWER"
@@ -50,10 +58,19 @@ install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/proposals" "$STATE/appr
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/pending"
 # The mirror serves private-network clients: vault read-only, its own dir.
 install -d -o "$MIRROR_USER" -g "$GROUP" -m 0750 "$STATE/mirror"
+# SSH refuses a home, a .ssh or an authorized_keys that the group can write,
+# so these stay owner-only even though the group owns the rest.
+install -d -o "$MIRROR_USER" -g "$GROUP" -m 0700 "$STATE/mirror/.ssh"
+# Never truncate: a re-run must not discard keys the operator already added.
+AUTHORIZED_KEYS="$STATE/mirror/.ssh/authorized_keys"
+[[ -e "$AUTHORIZED_KEYS" ]] || : > "$AUTHORIZED_KEYS"
+chown "$MIRROR_USER:$GROUP" "$AUTHORIZED_KEYS"
+chmod 0600 "$AUTHORIZED_KEYS"
 # Bare repository that Working Copy and other VPN clients clone over SSH.
 install -d -o "$MIRROR_USER" -g "$GROUP" -m 0750 /srv/git
 if [[ ! -d /srv/git/knowledge-vault.git ]]; then
-  sudo -u "$MIRROR_USER" git init --bare -q -b main /srv/git/knowledge-vault.git
+  git init --bare -q -b main /srv/git/knowledge-vault.git
+  chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
 fi
 say "/srv/git/knowledge-vault.git"
 say "$PREFIX/vault, $STATE/{proposals,pending,decisions,approved,publisher}"

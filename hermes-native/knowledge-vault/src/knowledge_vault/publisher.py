@@ -1,6 +1,7 @@
 import fcntl
 import json
 import os
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -8,8 +9,12 @@ from pathlib import Path
 from .models import ApprovedRecord, Decision, Proposal, PublicationFailure
 
 
-def load_approved(directory):
-    """Read approved records the control plane spooled for the local publisher."""
+def load_approved(directory, on_failure=None):
+    """Read approved records the control plane spooled for the local publisher.
+
+    An unreadable entry is never silently dropped: it is reported through
+    `on_failure` so an operator can see why a note was not published.
+    """
     records = []
     for path in sorted(Path(directory).glob("*.json")):
         try:
@@ -17,8 +22,9 @@ def load_approved(directory):
             records.append(
                 ApprovedRecord(Proposal(**payload["proposal"]), Decision(**payload["decision"]))
             )
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            if on_failure:
+                on_failure(PublicationFailure(str(path), f"unreadable approved record: {error}"))
     return records
 
 
@@ -26,9 +32,12 @@ def main():
     vault = os.environ["KNOWLEDGE_VAULT_DIR"]
     state = os.environ["KNOWLEDGE_VAULT_STATE_DIR"]
     spool = os.environ["KNOWLEDGE_VAULT_APPROVED_DIR"]
-    publisher = Publisher(vault, lambda: load_approved(spool), state)
+    rejected = []
+    publisher = Publisher(vault, lambda: load_approved(spool, rejected.append), state)
     publisher.publish()
-    return 1 if publisher.failures else 0
+    for failure in rejected + publisher.failures:
+        print(f"knowledge-vault publisher: {failure.proposal_id}: {failure.reason}", file=sys.stderr)
+    return 1 if rejected or publisher.failures else 0
 
 
 class PublisherLocked(RuntimeError):

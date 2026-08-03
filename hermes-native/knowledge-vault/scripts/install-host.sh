@@ -76,14 +76,9 @@ test proposal publishes correctly.
 Run one cycle by hand. The runners read their paths from the environment, which
 systemd normally supplies:
 
-  # 1. queue a test proposal (the control plane would normally do this)
-  sudo -u $REVIEW_USER $PREFIX/.venv/bin/python - <<'PY'
-  import json, pathlib
-  from knowledge_vault.models import Proposal
-  p = Proposal.create("# Test note\\nFirst real cycle.", "first-cycle", {"agent": "manual"})
-  pathlib.Path("$STATE/proposals/test.json").write_text(json.dumps({"proposal": p.__dict__}))
-  print(p.id)
-  PY
+  # 1. queue a test proposal (the control plane would normally do this).
+  #    Written as a single -c so it works in bash, zsh and fish alike.
+  sudo -u $REVIEW_USER $PREFIX/.venv/bin/python -c 'import json, pathlib; from knowledge_vault.models import Proposal; p = Proposal.create("# Test note\\nFirst real cycle.", "first-cycle", {"agent": "manual"}); pathlib.Path("$STATE/proposals/test.json").write_text(json.dumps({"proposal": p.__dict__})); print(p.id)'
 
   # 2. project it for review
   sudo -u $REVIEW_USER \\

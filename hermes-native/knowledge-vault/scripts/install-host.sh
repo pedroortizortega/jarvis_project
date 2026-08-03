@@ -14,6 +14,7 @@ PREFIX=/opt/knowledge-vault
 STATE=/var/lib/knowledge-vault
 GROUP=knowledge-vault
 PUBLISHER_USER=knowledge-vault-publisher
+MIRROR_USER=knowledge-vault-mirror
 REVIEW_USER=knowledge-vault-review
 REVIEWER="${1:-${SUDO_USER:-}}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +29,7 @@ say() { printf '  %s\n' "$*"; }
 echo "Accounts"
 getent group "$GROUP" >/dev/null || groupadd --system "$GROUP"
 say "group $GROUP"
-for user in "$PUBLISHER_USER" "$REVIEW_USER"; do
+for user in "$PUBLISHER_USER" "$REVIEW_USER" "$MIRROR_USER"; do
   getent passwd "$user" >/dev/null || useradd --system --no-create-home \
     --shell /usr/sbin/nologin --gid "$GROUP" "$user"
   say "user $user"
@@ -47,6 +48,14 @@ install -d -o "$PUBLISHER_USER" -g "$GROUP" -m 0700 "$STATE/publisher"
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/proposals" "$STATE/approved" "$STATE/decisions"
 # Only pending is group-writable: the human edits the projected file in place.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/pending"
+# The mirror serves private-network clients: vault read-only, its own dir.
+install -d -o "$MIRROR_USER" -g "$GROUP" -m 0750 "$STATE/mirror"
+# Bare repository that Working Copy and other VPN clients clone over SSH.
+install -d -o "$MIRROR_USER" -g "$GROUP" -m 0750 /srv/git
+if [[ ! -d /srv/git/knowledge-vault.git ]]; then
+  sudo -u "$MIRROR_USER" git init --bare -q -b main /srv/git/knowledge-vault.git
+fi
+say "/srv/git/knowledge-vault.git"
 say "$PREFIX/vault, $STATE/{proposals,pending,decisions,approved,publisher}"
 
 echo "Package"
@@ -60,11 +69,13 @@ chmod -R g+rX "$PREFIX/.venv"
 install -m 0750 -o "$REVIEW_USER" -g "$GROUP" "$SOURCE_DIR/scripts/approve_locally.py" "$PREFIX/approve_locally.py"
 test -x "$PREFIX/.venv/bin/knowledge-vault-review"
 test -x "$PREFIX/.venv/bin/knowledge-vault-publisher"
+test -x "$PREFIX/.venv/bin/knowledge-vault-mirror"
 say "entry points installed"
 
 echo "Units"
 install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-review.service" /etc/systemd/system/
 install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-publisher.service" /etc/systemd/system/
+install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-mirror.service" /etc/systemd/system/
 systemctl daemon-reload
 say "installed, both left disabled on purpose"
 

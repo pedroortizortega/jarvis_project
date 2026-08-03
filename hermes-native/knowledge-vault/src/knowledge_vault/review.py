@@ -14,6 +14,10 @@ class PendingProjector:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{proposal.id}.md"
         path.write_text(f"---\nproposal_id: {proposal.id}\nversion: 1\n---\n{proposal.markdown}\n", encoding="utf-8")
+        # Set the mode explicitly rather than trusting the ambient umask: the
+        # human reviewer writes the decision into this file, and a run started
+        # outside systemd would otherwise leave it unwritable to the group.
+        os.chmod(path, 0o660)
         return path
 
 

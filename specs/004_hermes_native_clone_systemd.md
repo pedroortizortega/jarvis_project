@@ -1028,7 +1028,20 @@ Permisos de filesystem en el host:
 | `/opt/knowledge-vault/vault` | `knowledge-vault-publisher:knowledge-vault` | `0750` | escritura solo del publisher; lectura del grupo (Hermes, OpenCode) |
 | `/var/lib/knowledge-vault/publisher` | `knowledge-vault-publisher:knowledge-vault` | `0700` | estado y lock del publisher |
 | `/var/lib/knowledge-vault/approved` | `knowledge-vault-review:knowledge-vault` | `0750` | el publisher lo lee en modo solo lectura |
+| `/var/lib/knowledge-vault/proposals` | `knowledge-vault-review:knowledge-vault` | `0750` | spool de propuestas del control plane; review lo lee solo lectura |
 | `/var/lib/knowledge-vault/pending` | `knowledge-vault-review:knowledge-vault` | `0750` | area visible en Obsidian, fuera del vault publicado |
+| `/var/lib/knowledge-vault/decisions` | `knowledge-vault-review:knowledge-vault` | `0750` | decisiones humanas exportadas hacia el control plane |
+
+Dos unidades `oneshot`, cada una con su usuario:
+
+| Unidad | Usuario | Escribe |
+|---|---|---|
+| `knowledge-vault-publisher.service` | `knowledge-vault-publisher` | vault canonico y su estado |
+| `knowledge-vault-review.service` | `knowledge-vault-review` | pending y decisions; `InaccessiblePaths` sobre el vault |
+
+La proyeccion nunca pisa un archivo pending existente: el revisor puede estar
+editandolo. Una decision malformada se reporta y se queda en su lugar para
+corregirla; no se descarta.
 
 Hermes y OpenCode consumen el vault en solo lectura. Las copias en iCloud u
 Obsidian movil son copias: nunca son autoridad de publicacion.

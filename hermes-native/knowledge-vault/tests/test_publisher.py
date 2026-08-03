@@ -24,7 +24,7 @@ class PublisherTests(unittest.TestCase):
             approved = record()
             publisher, vault = self.publisher(root, [approved])
             published = publisher.publish()
-            self.assertEqual([vault / f"{approved.proposal.id}.md"], published)
+            self.assertEqual([vault / "note.md"], published)
             self.assertEqual("# Note\nBody\n", published[0].read_text(encoding="utf-8"))
             self.assertEqual([], publisher.failures)
             self.assertEqual([], list(vault.glob("*.tmp*")))
@@ -74,6 +74,56 @@ class PublisherTests(unittest.TestCase):
                 finally:
                     fcntl.flock(held.fileno(), fcntl.LOCK_UN)
             self.assertEqual(1, len(list(vault.glob("*.md"))))
+
+
+class NoteNamingTests(unittest.TestCase):
+    def publisher(self, root, records):
+        root = Path(root)
+        return Publisher(root / "vault", lambda: list(records), root / "state"), root / "vault"
+
+    def approved(self, markdown, predecessor=None):
+        proposal = Proposal.create(markdown, f"key-{markdown[:12]}", {"agent": "hermes"}, predecessor)
+        return ApprovedRecord(proposal, Decision(proposal.id, 1, "pedro", "approved", "ok"))
+
+    def test_note_is_named_after_its_heading(self):
+        with tempfile.TemporaryDirectory() as root:
+            publisher, vault = self.publisher(root, [self.approved("# Primer ciclo real\nBody")])
+            self.assertEqual(vault / "primer-ciclo-real.md", publisher.publish()[0])
+
+    def test_note_without_a_heading_falls_back_to_its_id(self):
+        with tempfile.TemporaryDirectory() as root:
+            record = self.approved("Body with no heading")
+            publisher, vault = self.publisher(root, [record])
+            self.assertEqual(vault / f"{record.proposal.id}.md", publisher.publish()[0])
+
+    def test_a_revision_replaces_the_note_it_supersedes(self):
+        with tempfile.TemporaryDirectory() as root:
+            original = self.approved("# Kubernetes\nFirst take")
+            self.publisher(root, [original])[0].publish()
+            revision = self.approved("# Kubernetes\nSecond take", predecessor=original.proposal.id)
+            publisher, vault = self.publisher(root, [revision])
+            published = publisher.publish()
+            self.assertEqual([vault / "kubernetes.md"], published)
+            self.assertEqual(1, len(list(vault.glob("*.md"))), "the superseded note was left behind")
+            self.assertIn("Second take", published[0].read_text(encoding="utf-8"))
+
+    def test_a_retitled_revision_moves_the_note(self):
+        with tempfile.TemporaryDirectory() as root:
+            original = self.approved("# Old title\nBody")
+            self.publisher(root, [original])[0].publish()
+            revision = self.approved("# New title\nBody", predecessor=original.proposal.id)
+            publisher, vault = self.publisher(root, [revision])
+            self.assertEqual([vault / "new-title.md"], publisher.publish())
+            self.assertFalse((vault / "old-title.md").exists(), "the old title was orphaned")
+
+    def test_unrelated_notes_sharing_a_title_do_not_clobber_each_other(self):
+        with tempfile.TemporaryDirectory() as root:
+            first, second = self.approved("# Notas\nOne"), self.approved("# Notas\nTwo")
+            publisher, vault = self.publisher(root, [first, second])
+            published = publisher.publish()
+            self.assertEqual(2, len(set(published)), "one note overwrote the other")
+            self.assertEqual(2, len(list(vault.glob("*.md"))))
+            self.assertEqual(vault / "notas.md", published[0])
 
 
 class ApprovedSpoolTests(unittest.TestCase):

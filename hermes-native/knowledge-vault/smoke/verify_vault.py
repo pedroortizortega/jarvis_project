@@ -58,7 +58,7 @@ def publisher_reports_corrupt_approved_records():
         )
         check("exit code is non-zero so systemd marks the run failed", run.returncode == 1, f"exit={run.returncode}")
         check("stderr names the corrupt file", "corrupt.json" in run.stderr)
-        check("the healthy note was still published", (vault / f"{good.id}.md").exists())
+        check("the healthy note was still published", (vault / "good.md").exists())
 
 
 def retrieval_stops_rehashing_an_unchanged_vault():

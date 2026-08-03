@@ -999,6 +999,43 @@ El futuro `backup-hermes.sh` debe:
 Para una migracion critica o antes de promover un standby, preferir una copia
 en frio con el gateway detenido.
 
+## Fencing del knowledge vault
+
+El vault canonico (Obsidian) vive en el host y comparte el modelo de autoridad
+de este spec: Kubernetes es plano de control, systemd es primary.
+
+Invariantes:
+
+1. **Un solo escritor.** Solo la unidad `knowledge-vault-publisher.service`
+   escribe el vault canonico. Toma un `flock` no bloqueante sobre
+   `/var/lib/knowledge-vault/publisher/publisher.lock`; una segunda instancia
+   falla en vez de escribir.
+2. **Sin segundo gateway.** `knowledge-proposals-api` no tiene token de
+   Telegram, no usa `hostNetwork` y no reemplaza al gateway de Hermes. La
+   relacion con `hermes-agent-master.yaml` no cambia: sigue en `replicas: 0`.
+3. **El cluster no toca el vault.** Los manifiestos de
+   `kubernetes/knowledge-proposals/` no montan `hostPath` ni el vault. Los
+   registros aprobados se exportan y el publisher del host los tira (pull);
+   nunca hay push desde el cluster.
+4. **Escritura atomica.** El publisher escribe un temporal en el mismo
+   filesystem y hace `os.replace`. Si algo falla, la nota publicada previa
+   queda intacta y el fallo se registra.
+
+Permisos de filesystem en el host:
+
+| Ruta | Dueño | Modo | Acceso |
+|---|---|---|---|
+| `/opt/knowledge-vault/vault` | `knowledge-vault-publisher:knowledge-vault` | `0750` | escritura solo del publisher; lectura del grupo (Hermes, OpenCode) |
+| `/var/lib/knowledge-vault/publisher` | `knowledge-vault-publisher:knowledge-vault` | `0700` | estado y lock del publisher |
+| `/var/lib/knowledge-vault/approved` | `knowledge-vault-review:knowledge-vault` | `0750` | el publisher lo lee en modo solo lectura |
+| `/var/lib/knowledge-vault/pending` | `knowledge-vault-review:knowledge-vault` | `0750` | area visible en Obsidian, fuera del vault publicado |
+
+Hermes y OpenCode consumen el vault en solo lectura. Las copias en iCloud u
+Obsidian movil son copias: nunca son autoridad de publicacion.
+
+La unidad se instala deshabilitada y solo se habilita despues de que una
+propuesta de prueba revisada se publique correctamente.
+
 ## Rollback a Kubernetes
 
 Solo si el gateway systemd esta deshabilitado y detenido:

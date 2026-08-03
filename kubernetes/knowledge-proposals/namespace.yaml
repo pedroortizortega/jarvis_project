@@ -1,0 +1,7 @@
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knowledge-proposals
+  labels:
+    kubernetes.io/metadata.name: knowledge-proposals

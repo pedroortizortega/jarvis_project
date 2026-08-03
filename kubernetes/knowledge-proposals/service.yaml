@@ -1,0 +1,13 @@
+# service.yaml
+# ClusterIP only. The host outbox and publisher reach it through the cluster
+# network; it is never exposed as an ingress or NodePort gateway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-proposals-api
+  namespace: knowledge-proposals
+spec:
+  type: ClusterIP
+  selector: {app: knowledge-proposals-api}
+  ports:
+    - {name: http, port: 8080, targetPort: http, protocol: TCP}

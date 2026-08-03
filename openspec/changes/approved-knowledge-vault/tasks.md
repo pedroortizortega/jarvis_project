@@ -57,6 +57,20 @@ Retarget/rebase any polluted child diff to its immediate parent before review.
 
 ## Phase 3: PR 3 — Local Cited Retrieval
 
-- [ ] 3.1 RED: Create `tests/test_retrieval.py` for published-only results, deterministic path/fragment citations, and unavailable output for absent/inconsistent indexes.
-- [ ] 3.2 GREEN/REFACTOR: Create `src/knowledge_vault/retrieval.py` with local lexical/semantic fusion and reconstructible current index only.
-- [ ] 3.3 Run `python -m unittest discover -s tests`; record deferred integration coverage pending datastore and embedding runtime.
+- [x] 3.1 RED: Create `tests/test_retrieval.py` for published-only results, deterministic path/fragment citations, and unavailable output for absent/inconsistent indexes.
+- [x] 3.2 GREEN/REFACTOR: Create `src/knowledge_vault/retrieval.py` with local lexical/semantic fusion and reconstructible current index only.
+- [x] 3.3 Run `python -m unittest discover -s tests`; record deferred integration coverage pending datastore and embedding runtime.
+
+## Deferred Coverage
+
+`PYTHONPATH=src python -m unittest discover -s tests` passes 17 unit tests
+(outbox 4, review 2, publisher 6, retrieval 5). The following remain deferred
+because the change's open questions are still open:
+
+| Deferred | Blocked on | Current substitute |
+|---|---|---|
+| Proposal API contract tests (`POST /proposals`, `/decision`, `GET /approved`) | Control-plane datastore selection | `ProposalClient` protocol plus a fake sender in the outbox tests |
+| Publisher end-to-end pull from the control plane | Same | Read-only on-disk approved spool (`load_approved`) |
+| Semantic ranking quality | Embedding runtime selection | Injected `embedder` callable; retrieval falls back to lexical-only when absent |
+| Host permission and unit fencing on a real machine | `knowledge-vault-publisher.service` not yet installed | `flock` contention covered in `test_publisher.py` |
+| NetworkPolicy reachability from the systemd host | Node CIDR confirmation on trantor | Manifest documents the assumed `192.168.1.0/24` |

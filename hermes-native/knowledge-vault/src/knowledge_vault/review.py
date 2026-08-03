@@ -1,10 +1,10 @@
 import json
 import os
 import sys
-import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
+from .atomic import write_atomic
 from .models import Decision, Proposal, PublicationFailure
 class PendingProjector:
     def __init__(self, directory):
@@ -13,12 +13,12 @@ class PendingProjector:
     def project(self, proposal):
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{proposal.id}.md"
-        path.write_text(f"---\nproposal_id: {proposal.id}\nversion: 1\n---\n{proposal.markdown}\n", encoding="utf-8")
-        # Set the mode explicitly rather than trusting the ambient umask: the
-        # human reviewer writes the decision into this file, and a run started
-        # outside systemd would otherwise leave it unwritable to the group.
-        os.chmod(path, 0o660)
-        return path
+        # 0660: the human reviewer writes the decision into this very file.
+        return write_atomic(
+            path,
+            f"---\nproposal_id: {proposal.id}\nversion: 1\n---\n{proposal.markdown}\n",
+            0o660,
+        )
 
 
 class DecisionImporter:
@@ -51,16 +51,6 @@ def _frontmatter(path):
     except ValueError:
         return {}
     return dict(line.split(": ", 1) for line in lines[1:end] if ": " in line)
-
-
-def _write_json(path, payload):
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False
-    ) as temporary:
-        json.dump(payload, temporary)
-        temporary.flush()
-        os.fsync(temporary.fileno())
-    os.replace(temporary.name, path)
 
 
 def run_review(spool_directory, pending_directory, decisions_directory, on_failure=None):
@@ -98,7 +88,8 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
             if on_failure:
                 on_failure(PublicationFailure(str(path), f"invalid decision: {error}"))
             continue
-        _write_json(decisions / f"{decision.proposal_id}.json", asdict(decision))
+        # 0640: the control plane reads exported decisions as another user.
+        write_atomic(decisions / f"{decision.proposal_id}.json", json.dumps(asdict(decision)), 0o640)
         path.unlink()
     return projected, recorded
 

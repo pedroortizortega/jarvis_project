@@ -57,7 +57,7 @@ fi
 "$PREFIX/.venv/bin/pip" install --quiet "$SOURCE_DIR"
 chown -R "$PUBLISHER_USER:$GROUP" "$PREFIX/.venv"
 chmod -R g+rX "$PREFIX/.venv"
-install -m 0750 -o "$PUBLISHER_USER" -g "$GROUP" "$SOURCE_DIR/scripts/approve_locally.py" "$PREFIX/approve_locally.py"
+install -m 0750 -o "$REVIEW_USER" -g "$GROUP" "$SOURCE_DIR/scripts/approve_locally.py" "$PREFIX/approve_locally.py"
 test -x "$PREFIX/.venv/bin/knowledge-vault-review"
 test -x "$PREFIX/.venv/bin/knowledge-vault-publisher"
 say "entry points installed"
@@ -91,8 +91,10 @@ systemd normally supplies:
   \$EDITOR $STATE/pending/<id>.md    # add reviewer:, decision:, rationale:
   # ...repeat step 2...
 
-  # 4. join proposal and decision (stand-in for the missing control plane)
-  sudo -u $PUBLISHER_USER $PREFIX/.venv/bin/python $PREFIX/approve_locally.py \\
+  # 4. join proposal and decision (stand-in for the missing control plane).
+  #    Runs as $REVIEW_USER, which owns the approved spool; the publisher only
+  #    ever reads it.
+  sudo -u $REVIEW_USER $PREFIX/.venv/bin/python $PREFIX/approve_locally.py \\
     $STATE/proposals $STATE/decisions $STATE/approved
 
   # 5. publish, then look at the vault

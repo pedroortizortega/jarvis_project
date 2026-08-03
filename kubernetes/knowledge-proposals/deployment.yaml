@@ -11,7 +11,10 @@ metadata:
 spec:
   replicas: 0
   strategy:
-    type: RollingUpdate
+    # Recreate, never RollingUpdate: the state PVC is ReadWriteOnce on a
+    # node-bound local-path volume and SQLite allows a single writer, so a
+    # second pod would deadlock waiting for the volume.
+    type: Recreate
   selector: {matchLabels: {app: knowledge-proposals-api}}
   template:
     metadata: {labels: {app: knowledge-proposals-api}}
@@ -41,6 +44,7 @@ spec:
             limits: {cpu: 500m, memory: 512Mi}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
+            - {name: state, mountPath: /var/lib/proposals}
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             initialDelaySeconds: 10
@@ -50,3 +54,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: state
+          persistentVolumeClaim:
+            claimName: knowledge-proposals-state

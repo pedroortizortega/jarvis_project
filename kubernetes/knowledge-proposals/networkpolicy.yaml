@@ -1,7 +1,14 @@
 # networkpolicy.yaml
-# Default-deny for the proposal API, then narrow allows. The host outbox and
-# publisher run on the node (systemd), so their traffic arrives from the node
-# address — confirm 192.168.1.0/24 matches the trantor LAN before applying.
+# Default-deny for the proposal API, then narrow allows.
+#
+# The host outbox and publisher run on trantor under systemd, so their traffic
+# arrives either from the node LAN address or, once kube-proxy masquerades a
+# ClusterIP connection, from the node side of the pod network. Both are
+# allowed. Verified on trantor: LAN 192.168.100.0/24 (node 192.168.100.13,
+# wlan0) and flannel pod CIDR 10.42.0.0/24 (cni0 10.42.0.1).
+#
+# Egress stays DNS-only on purpose: the control plane keeps its state in
+# SQLite on a mounted PVC, so it needs to reach no other service.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -27,7 +34,9 @@ spec:
   ingress:
     - from:
         - ipBlock:
-            cidr: 192.168.1.0/24
+            cidr: 192.168.100.0/24
+        - ipBlock:
+            cidr: 10.42.0.0/24
       ports:
         - protocol: TCP
           port: 8080

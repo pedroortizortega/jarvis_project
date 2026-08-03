@@ -1029,8 +1029,14 @@ Permisos de filesystem en el host:
 | `/var/lib/knowledge-vault/publisher` | `knowledge-vault-publisher:knowledge-vault` | `0700` | estado y lock del publisher |
 | `/var/lib/knowledge-vault/approved` | `knowledge-vault-review:knowledge-vault` | `0750` | el publisher lo lee en modo solo lectura |
 | `/var/lib/knowledge-vault/proposals` | `knowledge-vault-review:knowledge-vault` | `0750` | spool de propuestas del control plane; review lo lee solo lectura |
-| `/var/lib/knowledge-vault/pending` | `knowledge-vault-review:knowledge-vault` | `0750` | area visible en Obsidian, fuera del vault publicado |
+| `/var/lib/knowledge-vault/pending` | `knowledge-vault-review:knowledge-vault` | `2770` | area visible en Obsidian, fuera del vault publicado |
 | `/var/lib/knowledge-vault/decisions` | `knowledge-vault-review:knowledge-vault` | `0750` | decisiones humanas exportadas hacia el control plane |
+
+`pending` es el unico directorio con escritura de grupo (`2770`, setgid): el
+revisor humano escribe su decision DENTRO del archivo proyectado, asi que
+necesita permiso de escritura ahi y en ningun otro lado. El usuario humano debe
+pertenecer al grupo `knowledge-vault`. El resto sigue siendo `0750`: el humano
+lee el vault publicado, pero no lo escribe nunca.
 
 Dos unidades `oneshot`, cada una con su usuario:
 

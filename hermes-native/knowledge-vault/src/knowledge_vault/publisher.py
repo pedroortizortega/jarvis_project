@@ -2,10 +2,10 @@ import fcntl
 import json
 import os
 import sys
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from .atomic import write_atomic
 from .models import ApprovedRecord, Decision, Proposal, PublicationFailure
 
 
@@ -92,21 +92,5 @@ class Publisher:
 
     def _write(self, record):
         target = self.vault_directory / f"{record.proposal.id}.md"
-        temporary = tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=self.vault_directory, suffix=".tmp", delete=False
-        )
-        try:
-            with temporary:
-                temporary.write(f"{record.proposal.markdown.strip()}\n")
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            os.replace(temporary.name, target)
-        except OSError:
-            Path(temporary.name).unlink(missing_ok=True)
-            raise
-        directory = os.open(self.vault_directory, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-        return target
+        # 0640: the publisher owns the vault, read-only consumers share its group.
+        return write_atomic(target, f"{record.proposal.markdown.strip()}\n", 0o640)

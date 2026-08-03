@@ -22,6 +22,11 @@ class ReviewTests(unittest.TestCase):
             decision = DecisionImporter(decisions.append).import_file(path)
         self.assertEqual("rejected", decision.decision)
         self.assertEqual("Needs sources", decisions[0].rationale)
+    def test_projected_file_is_writable_by_the_reviewer_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = PendingProjector(directory).project(self.proposal())
+            self.assertEqual(0o660, path.stat().st_mode & 0o777)
+
     def test_invalid_version_or_missing_rationale_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "pending.md"

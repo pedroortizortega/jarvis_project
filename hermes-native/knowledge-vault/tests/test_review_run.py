@@ -61,6 +61,11 @@ class RunReviewTests(unittest.TestCase):
             self.assertEqual("approved", exported["decision"])
             self.assertEqual("pedro", exported["reviewer"])
             self.assertFalse(note.exists())
+            self.assertEqual(
+                0o640,
+                (decisions / f"{proposal.id}.json").stat().st_mode & 0o777,
+                "the control plane runs as another user and must be able to read it",
+            )
 
     def test_malformed_decision_is_reported_and_kept_for_the_reviewer(self):
         failures = []

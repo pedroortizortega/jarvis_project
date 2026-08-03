@@ -1,11 +1,10 @@
 import hashlib
 import json
 import math
-import os
 import re
-import tempfile
 from pathlib import Path
 
+from .atomic import write_atomic
 from .models import RetrievalHit, RetrievalResult
 
 TOKEN = re.compile(r"[a-z0-9]+")
@@ -89,13 +88,8 @@ def build_index(vault_directory, index_path):
     }
     index_path = Path(index_path)
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=index_path.parent, suffix=".tmp", delete=False
-    ) as temporary:
-        json.dump(index, temporary)
-        temporary.flush()
-        os.fsync(temporary.fileno())
-    os.replace(temporary.name, index_path)
+    # 0640: the indexer builds it, read-only consumers query it.
+    write_atomic(index_path, json.dumps(index), 0o640)
     return index
 
 

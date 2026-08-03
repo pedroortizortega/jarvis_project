@@ -29,6 +29,12 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual([], publisher.failures)
             self.assertEqual([], list(vault.glob("*.tmp*")))
 
+    def test_published_note_is_readable_by_the_vault_group(self):
+        with tempfile.TemporaryDirectory() as root:
+            publisher, _ = self.publisher(root, [record()])
+            note = publisher.publish()[0]
+            self.assertEqual(0o640, note.stat().st_mode & 0o777)
+
     def test_unapproved_or_invalid_record_is_never_written(self):
         with tempfile.TemporaryDirectory() as root:
             rejected, empty = record(decision="rejected"), record(markdown="   ")

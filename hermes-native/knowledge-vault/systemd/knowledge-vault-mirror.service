@@ -1,0 +1,39 @@
+[Unit]
+Description=Knowledge vault git mirror for private-network clients
+Documentation=file:///opt/knowledge-vault/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=knowledge-vault-mirror
+Group=knowledge-vault
+WorkingDirectory=/var/lib/knowledge-vault/mirror
+Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/vault
+Environment=KNOWLEDGE_VAULT_MIRROR_DIR=/var/lib/knowledge-vault/mirror/repo
+# A bare repository on this host. Notes never leave the private network, so
+# there is no third party to encrypt against; clients reach it over the VPN.
+Environment=KNOWLEDGE_VAULT_MIRROR_REMOTE=/srv/git/knowledge-vault.git
+ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-mirror
+
+# The vault is read-only here; the mirror writes only its own working tree and
+# the bare repository that serves private-network clients.
+ReadOnlyPaths=/opt/knowledge-vault/vault
+ReadWritePaths=/var/lib/knowledge-vault/mirror /srv/git/knowledge-vault.git
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

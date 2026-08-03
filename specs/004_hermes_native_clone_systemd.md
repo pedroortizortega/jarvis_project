@@ -1081,6 +1081,36 @@ Si mas adelante se sincroniza el vault personal con iCloud u Obsidian Sync,
 verificar que el cliente siga symlinks; si no lo hace, reemplazar el enlace por
 un bind mount de solo lectura.
 
+### Espejo Git para clientes de la red privada
+
+trantor corre Linux y iCloud no tiene cliente nativo ahi, asi que el vault
+canonico no llega al movil por iCloud. El transporte es un repositorio Git
+alojado en la propia trantor, alcanzable solo por la VPN.
+
+`knowledge-vault-mirror.service` copia el vault publicado a un arbol de trabajo
+propio, commitea y empuja al repositorio bare `/srv/git/knowledge-vault.git`.
+Corre como su propio usuario `knowledge-vault-mirror`, recibe el vault en
+`ReadOnlyPaths` y solo escribe su directorio y ese bare.
+
+Las notas viajan en claro y esto es deliberado: nada sale de la red privada, no
+hay tercero que las almacene, y cifrarlas romperia justamente lo que se busca,
+que es leerlas en el movil. La frontera de confianza es la VPN, no el cifrado
+en reposo.
+
+Requisitos en el telefono:
+
+1. Tailscale o WireGuard con trantor en la misma red.
+2. Working Copy clonando `ssh://knowledge-vault-mirror@trantor/srv/git/knowledge-vault.git`.
+3. Obsidian movil abriendo el directorio que Working Copy sincroniza.
+
+Consecuencia aceptada: si trantor esta apagada o el telefono esta fuera de la
+VPN, no hay sincronizacion. Es el precio de no entregarle el cerebro a un
+tercero.
+
+El espejo refleja, no acumula: una nota borrada del vault se borra del
+repositorio. El historial de Git conserva las versiones anteriores, que es
+justamente el respaldo que antes no existia.
+
 ## Rollback a Kubernetes
 
 Solo si el gateway systemd esta deshabilitado y detenido:

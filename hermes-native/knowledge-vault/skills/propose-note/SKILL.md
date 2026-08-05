@@ -1,8 +1,8 @@
 ---
 name: propose-note
 description: Propose a note for the knowledge vault when something durable is learned — a decision and its reason, a root cause, a convention, a verified fact about the infrastructure. Also use when the user says to remember or write something down.
-tags: [knowledge, vault, memory, obsidian, notes]
-version: 1.0.0
+tags: [knowledge, vault, zettelkasten, okf, obsidian, notes]
+version: 2.0.0
 author: Jarvis
 ---
 
@@ -11,6 +11,9 @@ author: Jarvis
 You do not write to the vault. You propose, and Pedro decides. A proposal costs
 nothing and can be rejected in one word; a bad note that reaches the vault
 pollutes what he will trust six months from now.
+
+The vault is a Zettelkasten wrapped in the Open Knowledge Format: **one idea per
+note**, notes linked to each other, and a YAML envelope so agents can query it.
 
 ## Propose when
 
@@ -30,40 +33,80 @@ pollutes what he will trust six months from now.
 - What the repository already records: code structure, git history, what a file
   plainly says. Link to it instead of copying it.
 - Conversation, status updates, or what you did in this session.
-- Something already in the vault. Propose a revision of the existing note
-  instead of a second note about the same thing.
+- **Two ideas in one note.** That is the one rule Zettelkasten does not bend. If
+  you are about to write "and also", stop: it is a second note, and the two
+  should link to each other.
 
-## How
+## The shape of a note
 
-Write the note, then pipe it in. The note is Markdown and its **first heading
-becomes the file name**, so the heading must read like a title someone would
-search for, not like a sentence.
-
-```bash
-printf '%s' '# Longhorn no esta instalado en trantor
+```markdown
+---
+type: infra-fact
+tags: [storage, k3s, trantor]
+description: El cluster no tiene Longhorn; el unico storage class es local-path.
+---
+# Longhorn no esta instalado en trantor
 
 El unico storage class del cluster es `local-path`, el provisioner local de
 k3s, atado al nodo. Verificado con `kubectl get storageclass` el 2026-08-04.
 
-Consecuencia: cualquier PVC queda ligado a trantor y no sobrevive a mover el
-pod a otro nodo.' | KNOWLEDGE_VAULT_AGENT=jarvis \
-  KNOWLEDGE_VAULT_PROPOSAL_SPOOL=/var/lib/knowledge-vault/proposals \
-  /opt/knowledge-vault/.venv/bin/knowledge-vault-propose telegram
+Por eso [los PVC quedan atados al nodo](20260804224512.md), y por eso el
+control plane de propuestas [usa SQLite](20260805090133.md) en vez de una base
+de datos del cluster.
+```
+
+`type` is the only required field and it is what makes a note queryable. Choose
+a short, reusable one and prefer an existing one over inventing a near-synonym:
+`decision`, `infra-fact`, `root-cause`, `convention`, `concept`.
+
+`tags` and `description` are optional and worth the seconds they cost.
+
+Do **not** write `id`, `title` or `timestamp`: the publisher fills them in. The
+title comes from your first heading.
+
+## Links are the point
+
+A note nobody links to is a note nobody will find again. Before proposing, ask
+what the vault already knows about this, and link to it.
+
+Links are markdown links to the note's **id file name**, `[texto](20260804224512.md)`,
+never to a title — titles change, ids never do. To find the id of an existing
+note, look at the vault directory or its frontmatter.
+
+If you do not know the id of a note you want to link, say so in the body in
+plain words rather than inventing a link. A broken link is worse than a
+sentence.
+
+## How to submit
+
+Pipe the whole note in, frontmatter included:
+
+```bash
+printf '%s' '---
+type: infra-fact
+tags: [storage, k3s]
+---
+# Longhorn no esta instalado en trantor
+
+El unico storage class es `local-path`. Verificado el 2026-08-04.' \
+  | KNOWLEDGE_VAULT_AGENT=jarvis \
+    KNOWLEDGE_VAULT_PROPOSAL_SPOOL=/var/lib/knowledge-vault/proposals \
+    /opt/knowledge-vault/.venv/bin/knowledge-vault-propose telegram
 ```
 
 It prints the proposal id. Proposing the same text twice returns the same
-proposal and creates nothing, so a retry is safe.
+proposal and creates nothing, so a retry is safe. A note without a `type` is
+refused: fix it and submit again.
 
-## Write the note for the reader Pedro will be
+## Write for the reader Pedro will be
 
 He will read it without this conversation in his head. So:
 
 - State the fact, not the story of how you found it.
-- Say **why**, not only what. A note that says what without why is a note he
-  cannot act on.
+- Say **why**, not only what. A note that says what without why cannot be acted
+  on.
 - Write dates as absolute (`2026-08-04`), never "yesterday" or "today".
 - Include the evidence: the command, the value, the path you actually saw.
-- Keep it to one idea. Two ideas are two notes.
 
 ## After proposing
 

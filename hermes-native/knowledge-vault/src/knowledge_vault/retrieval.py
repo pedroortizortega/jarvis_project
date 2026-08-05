@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .atomic import write_atomic
+from .note import body_of
 from .models import RetrievalHit, RetrievalResult
 
 TOKEN = re.compile(r"[a-z0-9]+")
@@ -54,8 +55,12 @@ def vault_revision(vault_directory, cache=None):
 
 
 def _fragments(path):
-    """Split a note into heading-scoped fragments with deterministic ids."""
-    lines = path.read_text(encoding="utf-8").splitlines()
+    """Split a note into heading-scoped fragments with deterministic ids.
+
+    The OKF frontmatter is metadata for agents, not prose: indexing it would
+    have every note match its own field names.
+    """
+    lines = body_of(path.read_text(encoding="utf-8")).splitlines()
     sections, heading, body = [], None, []
     for line in lines:
         match = HEADING.match(line)

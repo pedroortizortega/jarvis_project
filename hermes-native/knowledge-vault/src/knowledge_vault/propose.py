@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .atomic import write_atomic
 from .models import Proposal
+from .note import parse_frontmatter
 
 
 def spool_sender(directory):
@@ -36,6 +37,10 @@ def propose(markdown, provenance, spool_directory):
     """Propose a note, once. Identical knowledge is never proposed twice."""
     if not markdown.strip():
         raise ValueError("a proposal needs content")
+    if not parse_frontmatter(markdown).get("type"):
+        # Refused here rather than at publication, so the agent learns while it
+        # still has the context to fix it.
+        raise ValueError("a note needs OKF frontmatter with a type")
     spool = Path(spool_directory)
     key = hashlib.sha256(markdown.strip().encode("utf-8")).hexdigest()
     for path in sorted(spool.glob("*.json")):

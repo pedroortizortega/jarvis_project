@@ -1,12 +1,13 @@
 import fcntl
 import json
 import os
-import re
 import sys
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from pathlib import Path
 
 from .atomic import write_atomic
+from .note import MissingType, parse_frontmatter, render, title_of
 from .models import ApprovedRecord, Decision, Proposal, PublicationFailure
 
 
@@ -41,19 +42,17 @@ def main():
     return 1 if rejected or publisher.failures else 0
 
 
-HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+def new_note_id(taken):
+    """A Zettelkasten id: the second the note was created, made unique.
 
-
-def note_name(markdown, proposal_id):
-    """Readable file name from the note's first heading.
-
-    A vault full of UUIDs is unusable in Obsidian, but a title is not a stable
-    identity, so lineage is tracked separately in the publisher's manifest and
-    the id remains the fallback when a note has no heading.
+    The id is the file name and every link is built from it, so it must never
+    change. Two notes born in the same second would collide, so the later one
+    borrows the next free second.
     """
-    heading = HEADING.search(markdown)
-    slug = "-".join(re.findall(r"[a-z0-9]+", heading.group(1).lower())) if heading else ""
-    return f"{slug or proposal_id}.md"
+    stamp = datetime.now(timezone.utc)
+    while stamp.strftime("%Y%m%d%H%M%S") in taken:
+        stamp += timedelta(seconds=1)
+    return stamp.strftime("%Y%m%d%H%M%S")
 
 
 class PublisherLocked(RuntimeError):
@@ -81,13 +80,14 @@ class Publisher:
             return {}
 
     def _target(self, record, manifest):
+        """A revision reuses the id of the note it supersedes: that is what
+        keeps every existing link to it valid."""
         proposal = record.proposal
-        name = note_name(proposal.markdown, proposal.id)
         superseded = manifest.get(proposal.predecessor_id) if proposal.predecessor_id else None
-        if superseded is None and (self.vault_directory / name).exists():
-            # Another lineage already owns that title; never overwrite it.
-            name = f"{name[:-3]}-{proposal.id[:8]}.md"
-        return self.vault_directory / name, superseded
+        if superseded:
+            return self.vault_directory / superseded, superseded
+        taken = {path.stem for path in self.vault_directory.glob("*.md")} | set(manifest.values())
+        return self.vault_directory / f"{new_note_id(taken)}.md", None
 
     @contextmanager
     def _fence(self):
@@ -125,13 +125,26 @@ class Publisher:
             return PublicationFailure(record.proposal.id, "proposal has no recorded approval")
         if not record.proposal.markdown.strip():
             return PublicationFailure(record.proposal.id, "proposal markdown is empty")
+        if not parse_frontmatter(record.proposal.markdown).get("type"):
+            return PublicationFailure(record.proposal.id, "note has no OKF type in its frontmatter")
         return None
 
     def _write(self, record, manifest):
         target, superseded = self._target(record, manifest)
+        fields = parse_frontmatter(record.proposal.markdown)
+        if superseded and target.exists():
+            # Keep every name the note has been known by, so a link written
+            # under the old title still leads a reader to it.
+            previous = parse_frontmatter(target.read_text(encoding="utf-8"))
+            fields["aliases"] = list(previous.get("aliases") or []) + list(fields.get("aliases") or [])
+            if previous.get("title"):
+                fields["aliases"] = [*fields["aliases"], previous["title"]]
+            fields.setdefault("timestamp", previous.get("timestamp"))
+        fields["title"] = title_of(record.proposal.markdown) or fields.get("title")
+        fields.setdefault("timestamp", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        fields["aliases"] = list(dict.fromkeys(alias for alias in fields.get("aliases") or [] if alias))
+        note = render(record.proposal.markdown, fields, note_id=target.stem)
         # 0640: the publisher owns the vault, read-only consumers share its group.
-        write_atomic(target, f"{record.proposal.markdown.strip()}\n", 0o640)
-        if superseded and superseded != target.name:
-            (self.vault_directory / superseded).unlink(missing_ok=True)
+        write_atomic(target, note, 0o640)
         manifest[record.proposal.id] = target.name
         return target

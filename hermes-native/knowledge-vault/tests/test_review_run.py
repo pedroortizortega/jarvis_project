@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_vault.models import Proposal
-from knowledge_vault.review import run_review
+from knowledge_vault.review import DirectoryUnusable, run_review
 
 
 class RunReviewTests(unittest.TestCase):
@@ -20,6 +20,18 @@ class RunReviewTests(unittest.TestCase):
             json.dumps({"proposal": proposal.__dict__}), encoding="utf-8"
         )
         return proposal
+
+    def test_a_missing_or_unwritable_directory_fails_loudly(self):
+        """Creating it silently is how a directory ends up owned by whoever ran
+        the command first, leaving the service unable to write to it."""
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            self.assertRaises(DirectoryUnusable, run_review, spool, Path(root) / "absent", decisions)
+            pending.chmod(0o500)
+            try:
+                self.assertRaises(DirectoryUnusable, run_review, spool, pending, decisions)
+            finally:
+                pending.chmod(0o770)
 
     def test_spooled_proposals_are_projected_for_obsidian(self):
         with tempfile.TemporaryDirectory() as root:
@@ -66,6 +78,24 @@ class RunReviewTests(unittest.TestCase):
                 (decisions / f"{proposal.id}.json").stat().st_mode & 0o777,
                 "the control plane runs as another user and must be able to read it",
             )
+
+    def test_a_decided_proposal_is_never_projected_again(self):
+        """Rejecting something must not mean seeing it again tomorrow."""
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            proposal = self.spool_proposal(spool)
+            run_review(spool, pending, decisions)
+            note = pending / f"{proposal.id}.md"
+            note.write_text(
+                f"---\nproposal_id: {proposal.id}\nversion: 1\nreviewer: pedro\n"
+                "decision: rejected\nrationale: La fisica esta invertida\n---\n# Draft\n",
+                encoding="utf-8",
+            )
+            run_review(spool, pending, decisions)
+            projected, recorded = run_review(spool, pending, decisions)
+            self.assertEqual([], projected, "a decided proposal came back for review")
+            self.assertEqual([], recorded)
+            self.assertEqual([], list(pending.glob("*.md")))
 
     def test_malformed_decision_is_reported_and_kept_for_the_reviewer(self):
         failures = []

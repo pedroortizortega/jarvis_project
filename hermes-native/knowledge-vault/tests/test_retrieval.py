@@ -18,9 +18,15 @@ def vault_with(root, notes):
 
 class RetrievalTests(unittest.TestCase):
     notes = {
-        "kubernetes.md": "# Kubernetes\nThe cluster runs k3s on trantor.\n\n# Storage\nLonghorn holds volumes.\n",
-        "voice.md": "# Voice\nPiper synthesises Spanish speech.\n",
+        "kubernetes.md": "---\ntype: fact\ntags: [infra]\n---\n# Kubernetes\nThe cluster runs k3s on trantor.\n\n# Storage\nLonghorn holds volumes.\n",
+        "voice.md": "---\ntype: fact\n---\n# Voice\nPiper synthesises Spanish speech.\n",
     }
+
+    def test_the_okf_envelope_is_not_indexed_as_prose(self):
+        with tempfile.TemporaryDirectory() as root:
+            retriever, _ = self.retriever(root)
+            result = retriever.search("type fact tags infra")
+            self.assertTrue(all("type:" not in hit.text for hit in result.hits))
 
     def retriever(self, root, embedder=None):
         vault = vault_with(root, self.notes)

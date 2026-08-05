@@ -37,7 +37,7 @@ def publisher_reports_corrupt_approved_records():
         root = Path(root)
         spool, vault, state = root / "spool", root / "vault", root / "state"
         spool.mkdir()
-        good = Proposal.create("# Good\nPublished body", "key-good", {"agent": "hermes"})
+        good = Proposal.create("---\ntype: fact\n---\n# Good\nPublished body", "key-good", {"agent": "hermes"})
         approval = Decision(good.id, 1, "reviewer", "approved", "ok")
         (spool / "good.json").write_text(
             json.dumps({"proposal": good.__dict__, "decision": approval.__dict__}), encoding="utf-8"
@@ -58,7 +58,7 @@ def publisher_reports_corrupt_approved_records():
         )
         check("exit code is non-zero so systemd marks the run failed", run.returncode == 1, f"exit={run.returncode}")
         check("stderr names the corrupt file", "corrupt.json" in run.stderr)
-        check("the healthy note was still published", (vault / "good.md").exists())
+        check("the healthy note was still published", len(list(vault.glob("*.md"))) == 1)
 
 
 def retrieval_stops_rehashing_an_unchanged_vault():
@@ -69,7 +69,8 @@ def retrieval_stops_rehashing_an_unchanged_vault():
         vault.mkdir()
         for number in range(500):
             (vault / f"note-{number:04d}.md").write_text(
-                f"# Note {number}\nContent about kubernetes and trantor number {number}.\n" * 20,
+                "---\ntype: fact\n---\n"
+                + f"# Note {number}\nContent about kubernetes and trantor number {number}.\n" * 20,
                 encoding="utf-8",
             )
         index = root / "index.json"
@@ -100,8 +101,9 @@ def review_cycle_runs_unattended():
     with tempfile.TemporaryDirectory() as root:
         root = Path(root)
         spool, pending, decisions = root / "spool", root / "pending", root / "decisions"
-        spool.mkdir()
-        proposal = Proposal.create("# Draft\nNeeds review", "key-review", {"agent": "hermes"})
+        for directory in (spool, pending, decisions):
+            directory.mkdir()
+        proposal = Proposal.create("---\ntype: fact\n---\n# Draft\nNeeds review", "key-review", {"agent": "hermes"})
         (spool / "p.json").write_text(json.dumps({"proposal": proposal.__dict__}), encoding="utf-8")
 
         projected, _ = run_review(spool, pending, decisions)

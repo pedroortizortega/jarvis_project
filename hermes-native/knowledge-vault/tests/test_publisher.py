@@ -6,10 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from knowledge_vault.models import ApprovedRecord, Decision, Proposal
+from knowledge_vault.note import body_of, parse_frontmatter
 from knowledge_vault.publisher import Publisher, PublisherLocked, load_approved
 
 
-def record(markdown="# Note\nBody", decision="approved"):
+def record(markdown="---\ntype: fact\n---\n# Note\nBody", decision="approved"):
     proposal = Proposal.create(markdown, "publish-key", {"agent": "hermes"})
     return ApprovedRecord(proposal, Decision(proposal.id, 1, "alex", decision, "Verified"))
 
@@ -24,8 +25,8 @@ class PublisherTests(unittest.TestCase):
             approved = record()
             publisher, vault = self.publisher(root, [approved])
             published = publisher.publish()
-            self.assertEqual([vault / "note.md"], published)
-            self.assertEqual("# Note\nBody\n", published[0].read_text(encoding="utf-8"))
+            self.assertRegex(published[0].name, r"^\d{14}\.md$")
+            self.assertEqual("# Note\nBody", body_of(published[0].read_text(encoding="utf-8")).strip())
             self.assertEqual([], publisher.failures)
             self.assertEqual([], list(vault.glob("*.tmp*")))
 
@@ -58,7 +59,7 @@ class PublisherTests(unittest.TestCase):
             failing, _ = self.publisher(root, [ApprovedRecord(revised.proposal, revised.decision)])
             with patch("knowledge_vault.publisher.os.replace", side_effect=OSError("disk full")):
                 self.assertEqual([], failing.publish())
-            self.assertEqual("# Note\nBody\n", note.read_text(encoding="utf-8"))
+            self.assertEqual("# Note\nBody", body_of(note.read_text(encoding="utf-8")).strip())
             self.assertEqual([], list(vault.glob("*.tmp*")))
             self.assertEqual(1, len(failing.failures))
 
@@ -76,54 +77,70 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(1, len(list(vault.glob("*.md"))))
 
 
-class NoteNamingTests(unittest.TestCase):
+class NoteIdentityTests(unittest.TestCase):
+    """Zettelkasten identity: the file name is an id that never changes, so a
+    link written today still resolves after the note is retitled."""
+
     def publisher(self, root, records):
         root = Path(root)
         return Publisher(root / "vault", lambda: list(records), root / "state"), root / "vault"
 
-    def approved(self, markdown, predecessor=None):
-        proposal = Proposal.create(markdown, f"key-{markdown[:12]}", {"agent": "hermes"}, predecessor)
+    def approved(self, markdown, predecessor=None, note_type="fact"):
+        markdown = f"---\ntype: {note_type}\n---\n{markdown}" if note_type else markdown
+        proposal = Proposal.create(markdown, f"key-{len(markdown)}-{markdown[:20]}", {"agent": "hermes"}, predecessor)
         return ApprovedRecord(proposal, Decision(proposal.id, 1, "pedro", "approved", "ok"))
 
-    def test_note_is_named_after_its_heading(self):
+    def test_a_note_is_filed_under_a_timestamp_id(self):
         with tempfile.TemporaryDirectory() as root:
-            publisher, vault = self.publisher(root, [self.approved("# Primer ciclo real\nBody")])
-            self.assertEqual(vault / "primer-ciclo-real.md", publisher.publish()[0])
+            publisher, vault = self.publisher(root, [self.approved("# Primer ciclo\nBody")])
+            published = publisher.publish()[0]
+            self.assertEqual(vault, published.parent)
+            self.assertRegex(published.name, r"^\d{14}\.md$")
 
-    def test_note_without_a_heading_falls_back_to_its_id(self):
+    def test_notes_created_in_the_same_second_get_distinct_ids(self):
         with tempfile.TemporaryDirectory() as root:
-            record = self.approved("Body with no heading")
-            publisher, vault = self.publisher(root, [record])
-            self.assertEqual(vault / f"{record.proposal.id}.md", publisher.publish()[0])
-
-    def test_a_revision_replaces_the_note_it_supersedes(self):
-        with tempfile.TemporaryDirectory() as root:
-            original = self.approved("# Kubernetes\nFirst take")
-            self.publisher(root, [original])[0].publish()
-            revision = self.approved("# Kubernetes\nSecond take", predecessor=original.proposal.id)
-            publisher, vault = self.publisher(root, [revision])
+            records = [self.approved("# Una\nA"), self.approved("# Otra\nB")]
+            publisher, _ = self.publisher(root, records)
             published = publisher.publish()
-            self.assertEqual([vault / "kubernetes.md"], published)
-            self.assertEqual(1, len(list(vault.glob("*.md"))), "the superseded note was left behind")
-            self.assertIn("Second take", published[0].read_text(encoding="utf-8"))
+            self.assertEqual(2, len(set(published)))
 
-    def test_a_retitled_revision_moves_the_note(self):
+    def test_a_revision_keeps_the_file_name_so_links_never_break(self):
         with tempfile.TemporaryDirectory() as root:
-            original = self.approved("# Old title\nBody")
-            self.publisher(root, [original])[0].publish()
-            revision = self.approved("# New title\nBody", predecessor=original.proposal.id)
+            original = self.approved("# Longhorn no esta instalado\nPrimera version")
+            first = self.publisher(root, [original])[0].publish()[0]
+            revision = self.approved("# Storage: solo local-path\nSegunda version", predecessor=original.proposal.id)
             publisher, vault = self.publisher(root, [revision])
-            self.assertEqual([vault / "new-title.md"], publisher.publish())
-            self.assertFalse((vault / "old-title.md").exists(), "the old title was orphaned")
+            second = publisher.publish()[0]
+            self.assertEqual(first, second, "the id moved and every link to it broke")
+            self.assertEqual(1, len(list(vault.glob("*.md"))))
+            self.assertIn("Segunda version", second.read_text(encoding="utf-8"))
 
-    def test_unrelated_notes_sharing_a_title_do_not_clobber_each_other(self):
+    def test_a_retitled_note_stays_findable_under_its_old_title(self):
         with tempfile.TemporaryDirectory() as root:
-            first, second = self.approved("# Notas\nOne"), self.approved("# Notas\nTwo")
-            publisher, vault = self.publisher(root, [first, second])
-            published = publisher.publish()
-            self.assertEqual(2, len(set(published)), "one note overwrote the other")
-            self.assertEqual(2, len(list(vault.glob("*.md"))))
-            self.assertEqual(vault / "notas.md", published[0])
+            original = self.approved("# Longhorn no esta instalado\nCuerpo")
+            self.publisher(root, [original])[0].publish()
+            revision = self.approved("# Storage: solo local-path\nCuerpo", predecessor=original.proposal.id)
+            publisher, _ = self.publisher(root, [revision])
+            fields = parse_frontmatter(publisher.publish()[0].read_text(encoding="utf-8"))
+            self.assertIn("Longhorn no esta instalado", fields["aliases"])
+            self.assertIn("Storage: solo local-path", fields["aliases"])
+            self.assertEqual("Storage: solo local-path", fields["title"])
+
+    def test_the_published_note_carries_its_okf_envelope(self):
+        with tempfile.TemporaryDirectory() as root:
+            publisher, _ = self.publisher(root, [self.approved("# Con sobre\nCuerpo", note_type="decision")])
+            fields = parse_frontmatter(publisher.publish()[0].read_text(encoding="utf-8"))
+            self.assertEqual("decision", fields["type"])
+            self.assertEqual("Con sobre", fields["title"])
+            self.assertRegex(fields["id"], r"^\d{14}$")
+            self.assertRegex(fields["timestamp"], r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_a_note_without_an_okf_type_is_refused(self):
+        with tempfile.TemporaryDirectory() as root:
+            publisher, vault = self.publisher(root, [self.approved("# Sin tipo\nCuerpo", note_type=None)])
+            self.assertEqual([], publisher.publish())
+            self.assertEqual([], list(vault.glob("*.md")))
+            self.assertIn("type", publisher.failures[0].reason)
 
 
 class ApprovedSpoolTests(unittest.TestCase):

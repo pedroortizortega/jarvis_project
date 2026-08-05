@@ -1081,6 +1081,54 @@ Si mas adelante se sincroniza el vault personal con iCloud u Obsidian Sync,
 verificar que el cliente siga symlinks; si no lo hace, reemplazar el enlace por
 un bind mount de solo lectura.
 
+### Formato de nota: Zettelkasten dentro de OKF
+
+Cada nota es Markdown con frontmatter YAML. Las dos disciplinas resuelven capas
+distintas y no compiten: Zettelkasten aporta la disciplina humana, OKF el sobre
+que un agente puede consultar.
+
+```markdown
+---
+type: infra-fact
+id: 20260805045153
+title: Longhorn no esta instalado en trantor
+aliases: [Longhorn no esta instalado en trantor]
+tags: [storage, k3s]
+timestamp: 2026-08-05T04:51:53Z
+---
+# Longhorn no esta instalado en trantor
+
+El unico storage class es `local-path`. Verificado el 2026-08-04.
+Por eso [los PVC quedan atados al nodo](20260804224512.md).
+```
+
+Reglas del formato:
+
+1. **El nombre del archivo es el `id` y NUNCA cambia.** Es un timestamp UTC
+   `YYYYMMDDHHMMSS`. Los enlaces se construyen con el, asi que retitular una
+   nota no rompe un solo enlace y el publisher no reescribe nada. Esa logica
+   simplemente no existe, y el codigo que no existe no tiene errores.
+2. **Una revision reutiliza el id de la nota que reemplaza.** Es lo que hace
+   valida esa promesa. El publisher lo resuelve por `predecessor_id` contra su
+   manifiesto.
+3. **`type` es obligatorio** (unico campo requerido por OKF) y se rechaza la
+   nota sin el, tanto al proponer como al publicar. Se rechaza temprano para
+   que el agente lo corrija mientras conserva el contexto.
+4. **`aliases` acumula todos los titulos** que la nota tuvo. Retitular no la
+   vuelve inencontrable: el buscador de Obsidian la halla por cualquiera de sus
+   nombres, y eso es lo que compensa tener archivos llamados por numero.
+5. **`id`, `title` y `timestamp` los escribe el publisher**, no el autor. El
+   titulo sale del primer encabezado del cuerpo.
+6. **Una idea por nota.** Dos ideas son dos notas enlazadas entre si.
+
+El vault es PLANO: sin carpetas. La clasificacion vive en `type` y `tags`, que
+es lo que OKF hace consultable. Las carpetas obligan a decidir donde va algo
+antes de entenderlo; los enlaces y los tags no. El `index.md` de OKF cumple
+aqui el papel de la nota indice del Zettelkasten y es imprescindible, no
+opcional, porque la lista de archivos es ilegible por diseno.
+
+El frontmatter NO se indexa para busqueda: es metadata para agentes, no prosa.
+
 ### Espejo Git para clientes de la red privada
 
 trantor corre Linux y iCloud no tiene cliente nativo ahi, asi que el vault

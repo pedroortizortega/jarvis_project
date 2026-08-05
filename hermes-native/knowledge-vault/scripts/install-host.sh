@@ -53,7 +53,10 @@ fi
 echo "Directories"
 install -d -o "$PUBLISHER_USER" -g "$GROUP" -m 0750 "$PREFIX" "$PREFIX/vault"
 install -d -o "$PUBLISHER_USER" -g "$GROUP" -m 0700 "$STATE/publisher"
-install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/proposals" "$STATE/approved" "$STATE/decisions"
+install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/approved" "$STATE/decisions"
+# Agents write proposals here, so the group may write. A proposal carries no
+# authority: it still needs a recorded human approval to reach the vault.
+install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/proposals"
 # Only pending is group-writable: the human edits the projected file in place.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/pending"
 # The mirror serves private-network clients: vault read-only, its own dir.
@@ -90,7 +93,15 @@ install -m 0750 -o "$REVIEW_USER" -g "$GROUP" "$SOURCE_DIR/scripts/approve_local
 test -x "$PREFIX/.venv/bin/knowledge-vault-review"
 test -x "$PREFIX/.venv/bin/knowledge-vault-publisher"
 test -x "$PREFIX/.venv/bin/knowledge-vault-mirror"
+test -x "$PREFIX/.venv/bin/knowledge-vault-propose"
 say "entry points installed"
+
+if [[ -n "$REVIEWER" && -d "/home/$REVIEWER/.hermes/skills" ]]; then
+  install -d -o "$REVIEWER" -g "$REVIEWER" -m 0755 "/home/$REVIEWER/.hermes/skills/propose-note"
+  install -o "$REVIEWER" -g "$REVIEWER" -m 0644 "$SOURCE_DIR/skills/propose-note/SKILL.md" \
+    "/home/$REVIEWER/.hermes/skills/propose-note/SKILL.md"
+  say "hermes skill propose-note installed for $REVIEWER"
+fi
 
 echo "Units"
 install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-review.service" /etc/systemd/system/

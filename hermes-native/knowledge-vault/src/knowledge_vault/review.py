@@ -6,19 +6,32 @@ from pathlib import Path
 
 from .atomic import write_atomic
 from .models import Decision, Proposal, PublicationFailure
+from .note import body_of, parse_frontmatter
+
+
+def _render(value):
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(str(item) for item in value) + "]"
+    text = str(value)
+    return f'"{text}"' if ": " in text or text.endswith(":") else text
 class PendingProjector:
     def __init__(self, directory):
         self.directory = Path(directory)
 
     def project(self, proposal):
+        """Merge the review fields into the note's own frontmatter.
+
+        Wrapping the note instead produced two frontmatter blocks: Obsidian
+        parses only the first, so the note's real fields rendered as body text
+        and the reviewer edited the wrong block.
+        """
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{proposal.id}.md"
+        fields = {"proposal_id": proposal.id, "version": 1, **parse_frontmatter(proposal.markdown)}
+        lines = [f"{key}: {_render(value)}" for key, value in fields.items()]
+        note = "---\n" + "\n".join(lines) + "\n---\n" + body_of(proposal.markdown).strip() + "\n"
         # 0660: the human reviewer writes the decision into this very file.
-        return write_atomic(
-            path,
-            f"---\nproposal_id: {proposal.id}\nversion: 1\n---\n{proposal.markdown}\n",
-            0o660,
-        )
+        return write_atomic(path, note, 0o660)
 
 
 class DecisionImporter:

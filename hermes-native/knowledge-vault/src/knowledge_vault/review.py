@@ -101,6 +101,10 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
             continue
         if (pending / f"{proposal.id}.md").exists():
             continue
+        if (decisions / f"{proposal.id}.json").exists():
+            # Already decided. Projecting it again would put a rejection back in
+            # front of the reviewer on every run.
+            continue
         projected.append(projector.project(proposal))
 
     recorded = []

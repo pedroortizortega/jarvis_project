@@ -79,6 +79,24 @@ class RunReviewTests(unittest.TestCase):
                 "the control plane runs as another user and must be able to read it",
             )
 
+    def test_a_decided_proposal_is_never_projected_again(self):
+        """Rejecting something must not mean seeing it again tomorrow."""
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            proposal = self.spool_proposal(spool)
+            run_review(spool, pending, decisions)
+            note = pending / f"{proposal.id}.md"
+            note.write_text(
+                f"---\nproposal_id: {proposal.id}\nversion: 1\nreviewer: pedro\n"
+                "decision: rejected\nrationale: La fisica esta invertida\n---\n# Draft\n",
+                encoding="utf-8",
+            )
+            run_review(spool, pending, decisions)
+            projected, recorded = run_review(spool, pending, decisions)
+            self.assertEqual([], projected, "a decided proposal came back for review")
+            self.assertEqual([], recorded)
+            self.assertEqual([], list(pending.glob("*.md")))
+
     def test_malformed_decision_is_reported_and_kept_for_the_reviewer(self):
         failures = []
         with tempfile.TemporaryDirectory() as root:

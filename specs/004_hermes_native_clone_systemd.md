@@ -1108,9 +1108,18 @@ Requisitos en el telefono:
 
 1. Tailscale o WireGuard con trantor en la misma tailnet.
 2. Pegar la clave publica de Working Copy en el `authorized_keys` de ese usuario.
-3. Working Copy clonando
+3. Un cliente Git movil (GitSync en Android, Working Copy en iOS) clonando
    `ssh://knowledge-vault-mirror@<host-tailscale>/srv/git/knowledge-vault.git`.
-4. Obsidian movil abriendo el directorio que Working Copy sincroniza.
+4. Obsidian movil abriendo el directorio que ese cliente sincroniza.
+
+La rama publicada es `main`. Un cliente configurado en `master` clona los
+objetos y deja el arbol de trabajo VACIO: se ve el directorio `.git` con todos
+los commits y ninguna nota. Es el sintoma mas comun y no parece un problema de
+rama, asi que se verifica primero.
+
+Si el arbol sigue vacio con la rama correcta, la causa suele ser el permiso de
+almacenamiento de Android: la app crea `.git` en su propio espacio y falla al
+escribir el resto sin un error visible.
 
 El instalador NUNCA trunca `authorized_keys`: se re-ejecuta seguido y no puede
 descartar claves ya agregadas.

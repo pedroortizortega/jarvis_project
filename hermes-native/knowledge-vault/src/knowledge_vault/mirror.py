@@ -8,6 +8,10 @@ from pathlib import Path
 COMMIT_AUTHOR = "knowledge-vault <knowledge-vault@localhost>"
 
 
+class VaultUnreadable(RuntimeError):
+    """Raised when the vault cannot be listed, instead of mirroring nothing."""
+
+
 class GitMirror:
     """Mirror published notes into a git working tree and push them.
 
@@ -56,7 +60,17 @@ class GitMirror:
 
         return sorted(changed)
 
+    def _check_vault(self):
+        """Path.glob swallows permission errors, so an unreadable vault would
+        look like an empty one and the mirror would report success having
+        copied nothing. Fail loudly instead."""
+        if not self.vault_directory.is_dir():
+            raise VaultUnreadable(f"{self.vault_directory} is not a directory")
+        if not os.access(self.vault_directory, os.R_OK | os.X_OK):
+            raise VaultUnreadable(f"{self.vault_directory} is not readable by this user")
+
     def sync(self):
+        self._check_vault()
         self._ensure_repo()
         changed = self._mirror_files()
         if not changed:
@@ -81,6 +95,9 @@ def main():
     )
     try:
         changed = mirror.sync()
+    except VaultUnreadable as error:
+        print(f"knowledge-vault mirror: {error}", file=sys.stderr)
+        return 1
     except subprocess.CalledProcessError as error:
         print(f"knowledge-vault mirror: {(error.stderr or '').strip()}", file=sys.stderr)
         return 1

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from knowledge_vault.mirror import GitMirror
+from knowledge_vault.mirror import GitMirror, VaultUnreadable
 
 
 def git(repo, *args):
@@ -60,6 +60,22 @@ class MirrorTests(unittest.TestCase):
             (vault / "draft.txt").write_text("not a note", encoding="utf-8")
             mirror.sync()
             self.assertFalse((repo / "draft.txt").exists())
+
+    def test_an_unreadable_vault_fails_loudly_instead_of_syncing_nothing(self):
+        with tempfile.TemporaryDirectory() as root:
+            mirror, vault, _ = self.setup(root)
+            vault.chmod(0o000)
+            try:
+                with self.assertRaises(VaultUnreadable):
+                    mirror.sync()
+            finally:
+                vault.chmod(0o750)
+
+    def test_a_missing_vault_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as root:
+            mirror = GitMirror(Path(root) / "absent", Path(root) / "mirror")
+            with self.assertRaises(VaultUnreadable):
+                mirror.sync()
 
     def test_changes_are_pushed_to_the_configured_remote(self):
         with tempfile.TemporaryDirectory() as root:

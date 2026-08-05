@@ -101,7 +101,8 @@ def review_cycle_runs_unattended():
     with tempfile.TemporaryDirectory() as root:
         root = Path(root)
         spool, pending, decisions = root / "spool", root / "pending", root / "decisions"
-        spool.mkdir()
+        for directory in (spool, pending, decisions):
+            directory.mkdir()
         proposal = Proposal.create("---\ntype: fact\n---\n# Draft\nNeeds review", "key-review", {"agent": "hermes"})
         (spool / "p.json").write_text(json.dumps({"proposal": proposal.__dict__}), encoding="utf-8")
 

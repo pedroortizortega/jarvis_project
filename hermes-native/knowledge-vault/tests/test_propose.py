@@ -44,7 +44,8 @@ class ProposeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
             spool, pending, decisions = root / "spool", root / "pending", root / "decisions"
-            spool.mkdir()
+            for directory in (spool, pending, decisions):
+                directory.mkdir()
             proposal = propose(TYPED, {"agent": "jarvis"}, spool)
             projected, _ = run_review(spool, pending, decisions)
             self.assertEqual([pending / f"{proposal.id}.md"], projected)

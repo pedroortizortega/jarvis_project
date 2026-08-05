@@ -66,6 +66,17 @@ def _frontmatter(path):
     return dict(line.split(": ", 1) for line in lines[1:end] if ": " in line)
 
 
+class DirectoryUnusable(RuntimeError):
+    """Raised when a state directory is missing or not writable by this user."""
+
+
+def _require_writable(path):
+    if not path.is_dir():
+        raise DirectoryUnusable(f"{path} does not exist; run the installer")
+    if not os.access(path, os.W_OK | os.X_OK):
+        raise DirectoryUnusable(f"{path} is not writable by this user")
+
+
 def run_review(spool_directory, pending_directory, decisions_directory, on_failure=None):
     """Project spooled proposals for Obsidian and export the decisions humans made.
 
@@ -75,8 +86,10 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
     """
     spool, pending = Path(spool_directory), Path(pending_directory)
     decisions = Path(decisions_directory)
+    # Never create these: a silent mkdir leaves the directory owned by whoever
+    # ran the command first, and the service then fails on every later run.
     for directory in (pending, decisions):
-        directory.mkdir(parents=True, exist_ok=True)
+        _require_writable(directory)
     projector, projected = PendingProjector(pending), []
 
     for path in sorted(spool.glob("*.json")):
@@ -109,12 +122,16 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
 
 def main():
     failures = []
-    projected, recorded = run_review(
-        os.environ["KNOWLEDGE_VAULT_PROPOSAL_SPOOL"],
-        os.environ["KNOWLEDGE_VAULT_PENDING_DIR"],
-        os.environ["KNOWLEDGE_VAULT_DECISIONS_DIR"],
-        on_failure=failures.append,
-    )
+    try:
+        projected, recorded = run_review(
+            os.environ["KNOWLEDGE_VAULT_PROPOSAL_SPOOL"],
+            os.environ["KNOWLEDGE_VAULT_PENDING_DIR"],
+            os.environ["KNOWLEDGE_VAULT_DECISIONS_DIR"],
+            on_failure=failures.append,
+        )
+    except DirectoryUnusable as error:
+        print(f"knowledge-vault review: {error}", file=sys.stderr)
+        return 1
     print(f"knowledge-vault review: projected {len(projected)}, recorded {len(recorded)}")
     for failure in failures:
         print(f"knowledge-vault review: {failure.proposal_id}: {failure.reason}", file=sys.stderr)

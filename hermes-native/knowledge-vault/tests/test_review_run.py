@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_vault.models import Proposal
-from knowledge_vault.review import run_review
+from knowledge_vault.review import DirectoryUnusable, run_review
 
 
 class RunReviewTests(unittest.TestCase):
@@ -20,6 +20,18 @@ class RunReviewTests(unittest.TestCase):
             json.dumps({"proposal": proposal.__dict__}), encoding="utf-8"
         )
         return proposal
+
+    def test_a_missing_or_unwritable_directory_fails_loudly(self):
+        """Creating it silently is how a directory ends up owned by whoever ran
+        the command first, leaving the service unable to write to it."""
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            self.assertRaises(DirectoryUnusable, run_review, spool, Path(root) / "absent", decisions)
+            pending.chmod(0o500)
+            try:
+                self.assertRaises(DirectoryUnusable, run_review, spool, pending, decisions)
+            finally:
+                pending.chmod(0o770)
 
     def test_spooled_proposals_are_projected_for_obsidian(self):
         with tempfile.TemporaryDirectory() as root:

@@ -1,12 +1,17 @@
 ---
 name: propose-note
-description: Propose a note for the knowledge vault when something durable is learned — a decision and its reason, a root cause, a convention, a verified fact about the infrastructure. Also use when the user says to remember or write something down.
+description: Propose a permanent note for the Obsidian knowledge vault (the "cerebro digital", the Zettelkasten). Use whenever knowledge should outlive this conversation and reach the vault Pedro reads in Obsidian - a decision and its reason, a root cause, a convention, a verified fact. Use it for any request naming the vault, the cerebro digital, Obsidian, a nota, or a Zettelkasten. This is NOT the agent's own memory tool: `memory` keeps context for you, this proposes a document for Pedro to review and publish.
 tags: [knowledge, vault, zettelkasten, okf, obsidian, notes]
-version: 2.0.0
+version: 2.1.0
 author: Jarvis
 ---
 
 # Propose a note for the vault
+
+**Not the `memory` tool.** `memory` is your own working context and nobody
+reviews it. This produces a document that lands in Pedro's Obsidian vault after
+he approves it. If a request is about the vault, the cerebro digital, Obsidian
+or a nota, it belongs here — even when it also sounds like "remember this".
 
 You do not write to the vault. You propose, and Pedro decides. A proposal costs
 nothing and can be rejected in one word; a bad note that reaches the vault

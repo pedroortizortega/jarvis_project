@@ -1,7 +1,9 @@
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from knowledge_vault.mirror import GitMirror, VaultUnreadable
 
@@ -76,6 +78,33 @@ class MirrorTests(unittest.TestCase):
             mirror = GitMirror(Path(root) / "absent", Path(root) / "mirror")
             with self.assertRaises(VaultUnreadable):
                 mirror.sync()
+
+    def test_it_commits_without_any_git_identity_configured(self):
+        with tempfile.TemporaryDirectory() as root:
+            mirror, _, repo = self.setup(root)
+            with patch.dict(
+                os.environ,
+                {"HOME": root, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            ):
+                mirror.sync()
+            self.assertIn("kubernetes.md", git(repo, "show", "--name-only", "--format="))
+
+    def test_a_commit_that_failed_earlier_is_retried(self):
+        """A failed commit used to become permanent: the files already matched,
+        so the next run reported nothing to do and never committed them."""
+        with tempfile.TemporaryDirectory() as root:
+            mirror, _, repo = self.setup(root)
+            mirror._commit = lambda count: (_ for _ in ()).throw(RuntimeError("git down"))
+            with self.assertRaises(RuntimeError):
+                mirror.sync()
+            head = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD"], cwd=repo, capture_output=True
+            )
+            self.assertNotEqual(0, head.returncode, "the failed commit was recorded anyway")
+
+            del mirror._commit
+            self.assertEqual(["kubernetes.md"], mirror.sync())
+            self.assertIn("kubernetes.md", git(repo, "show", "--name-only", "--format="))
 
     def test_changes_are_pushed_to_the_configured_remote(self):
         with tempfile.TemporaryDirectory() as root:

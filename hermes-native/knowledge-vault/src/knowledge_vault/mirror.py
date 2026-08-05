@@ -5,7 +5,14 @@ from pathlib import Path
 
 # The mirror is a copy, never the canonical vault: a broken git state must
 # never be able to damage published notes.
-COMMIT_AUTHOR = "knowledge-vault <knowledge-vault@localhost>"
+# git refuses to commit without an identity, and a system user has no
+# gitconfig, so the mirror always supplies its own.
+IDENTITY = {
+    "GIT_AUTHOR_NAME": "knowledge-vault",
+    "GIT_AUTHOR_EMAIL": "knowledge-vault@localhost",
+    "GIT_COMMITTER_NAME": "knowledge-vault",
+    "GIT_COMMITTER_EMAIL": "knowledge-vault@localhost",
+}
 
 
 class VaultUnreadable(RuntimeError):
@@ -33,7 +40,7 @@ class GitMirror:
             capture_output=True,
             text=True,
             check=check,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            env={**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"},
         )
 
     def _ensure_repo(self):
@@ -69,17 +76,27 @@ class GitMirror:
         if not os.access(self.vault_directory, os.R_OK | os.X_OK):
             raise VaultUnreadable(f"{self.vault_directory} is not readable by this user")
 
+    def _commit(self, count):
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", f"Publish {count} note{'s' if count != 1 else ''}")
+
+    def _pending(self):
+        """Ask git, not the file contents, what still needs committing.
+
+        Comparing files alone made a failed commit permanent: the notes already
+        matched on the next run, so the mirror reported nothing to do and never
+        committed what it had copied.
+        """
+        lines = self._git("status", "--porcelain").stdout.splitlines()
+        return sorted(Path(line[3:].strip().strip('"')).name for line in lines if line)
+
     def sync(self):
         self._check_vault()
         self._ensure_repo()
-        changed = self._mirror_files()
+        changed = self._mirror_files() or self._pending()
         if not changed:
             return []
-        self._git("add", "-A")
-        self._git(
-            "commit", "-q", "--author", COMMIT_AUTHOR,
-            "-m", f"Publish {len(changed)} note{'s' if len(changed) != 1 else ''}",
-        )
+        self._commit(len(changed))
         if self.remote:
             self._git("remote", "remove", "origin", check=False)
             self._git("remote", "add", "origin", self.remote)

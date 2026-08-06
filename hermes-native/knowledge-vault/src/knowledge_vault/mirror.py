@@ -102,16 +102,36 @@ class GitMirror:
         lines = self._git("status", "--porcelain").stdout.splitlines()
         return sorted(Path(line[3:].strip().strip('"')).name for line in lines if line)
 
+    def _adopt_remote(self):
+        """Converge on the remote's history, keeping the vault as the content.
+
+        Anything that pushes to the remote — a phone syncing the vault, a hand
+        run — leaves it ahead, and every later push is rejected until someone
+        intervenes. The vault is the source of truth for CONTENT and the remote
+        is the source of truth for HISTORY, so take both: adopt the history and
+        put the vault state back on top.
+        """
+        if not self.remote:
+            return
+        self._git("remote", "remove", "origin", check=False)
+        self._git("remote", "add", "origin", self.remote)
+        if self._git("fetch", "-q", "origin", self.branch, check=False).returncode != 0:
+            return
+        behind = self._git(
+            "rev-list", "--count", f"HEAD..origin/{self.branch}", check=False
+        )
+        if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):
+            self._git("reset", "-q", "--hard", f"origin/{self.branch}")
+
     def sync(self):
         self._check_vault()
         self._ensure_repo()
+        self._adopt_remote()
         changed = self._mirror_files() or self._pending()
         if not changed:
             return []
         self._commit(len(changed))
         if self.remote:
-            self._git("remote", "remove", "origin", check=False)
-            self._git("remote", "add", "origin", self.remote)
             self._git("push", "-q", "--set-upstream", "origin", self.branch)
         return changed
 

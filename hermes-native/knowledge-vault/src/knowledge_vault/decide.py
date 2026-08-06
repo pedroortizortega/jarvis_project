@@ -51,9 +51,15 @@ def decide(proposal_id, decision, rationale, pending_directory, reviewer=None, s
 
 
 def main():
-    if len(sys.argv) < 4:
+    """The reason arrives on stdin, never as an argument.
+
+    A reason is a sentence a person wrote, with colons and quotes in it.
+    Passing it through a shell argument meant the caller had to escape it, and
+    the command died on the quoting before it ever ran.
+    """
+    if len(sys.argv) != 3:
         print(
-            "usage: knowledge-vault-decide <proposal-id> <approved|rejected> <reason>",
+            "usage: <reason on stdin> | knowledge-vault-decide <proposal-id> <approved|rejected>",
             file=sys.stderr,
         )
         return 2
@@ -61,7 +67,7 @@ def main():
         path = decide(
             sys.argv[1],
             sys.argv[2],
-            " ".join(sys.argv[3:]),
+            sys.stdin.read(),
             os.environ["KNOWLEDGE_VAULT_PENDING_DIR"],
             reviewer=os.environ.get("KNOWLEDGE_VAULT_REVIEWER"),
             source=os.environ.get("KNOWLEDGE_VAULT_DECISION_SOURCE"),

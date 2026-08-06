@@ -73,5 +73,33 @@ class DecideTests(unittest.TestCase):
                 decide("p1", "rejected", "me arrepenti", pending)
 
 
+class DecideCommandTests(unittest.TestCase):
+    """The reason arrives on stdin. Passing it as an argument meant the agent
+    had to quote a sentence containing colons and quotes, and the shell broke
+    before the command ever ran."""
+
+    def test_the_reason_comes_from_stdin(self):
+        import io
+        from unittest.mock import patch
+
+        from knowledge_vault.decide import main
+
+        with tempfile.TemporaryDirectory() as root:
+            pending = DecideTests().pending(root)
+            reason = 'rechazo: el termino "resolucion cuantica" no esta establecido'
+            environment = {
+                "KNOWLEDGE_VAULT_PENDING_DIR": str(pending),
+                "KNOWLEDGE_VAULT_REVIEWER": "pedro",
+                "KNOWLEDGE_VAULT_DECISION_SOURCE": "telegram",
+            }
+            with patch.dict("os.environ", environment), patch("sys.stdin", io.StringIO(reason)), \
+                    patch("sys.argv", ["knowledge-vault-decide", "p1", "rejected"]):
+                self.assertEqual(0, main())
+            fields = parse_frontmatter((pending / "p1.md").read_text(encoding="utf-8"))
+            self.assertEqual("rejected", fields["decision"])
+            self.assertEqual(reason, fields["rationale"])
+            self.assertEqual("telegram", fields["source"])
+
+
 if __name__ == "__main__":
     unittest.main()

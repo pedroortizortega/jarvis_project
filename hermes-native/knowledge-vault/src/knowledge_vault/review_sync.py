@@ -20,6 +20,11 @@ from .mirror import IDENTITY
 from .note import parse_frontmatter
 
 
+# Explains the folder to whoever opens it on a phone. It is not a note, so the
+# queue must never mirror it away.
+README = "README.md"
+
+
 class DirectoryUnusable(RuntimeError):
     """Raised when the pending directory is missing or not writable."""
 
@@ -71,6 +76,24 @@ class ReviewSync:
         if self._git("fetch", "-q", "origin", self.branch, check=False).returncode == 0:
             self._git("reset", "-q", "--hard", f"origin/{self.branch}")
 
+    def _seed_branch(self):
+        """Publish the branch even while the queue is empty.
+
+        The phone has to be set up at some point, and that point is rarely the
+        moment a note happens to be waiting. A branch that only appears once
+        something is pending cannot be cloned in advance.
+        """
+        readme = self.repo_directory / README
+        if readme.exists() or self._git("rev-parse", "--verify", "HEAD", check=False).returncode == 0:
+            return
+        readme.write_text(
+            "# Cola de revision\n\n"
+            "Cada nota espera una decision. Completa `reviewer`, `decision`\n"
+            "(`approved` o `rejected`) y `rationale`, y sincroniza.\n\n"
+            "Esta carpeta no es el vault: lo que apruebes se publica alla.\n",
+            encoding="utf-8",
+        )
+
     def _import_decisions(self):
         """Bring back notes the reviewer decided, wherever they decided them."""
         imported = []
@@ -89,7 +112,7 @@ class ReviewSync:
     def _refresh_queue(self):
         """Make the branch show exactly what is waiting for a decision."""
         waiting = {path.name: path for path in self.pending_directory.glob("*.md")}
-        present = {path.name for path in self.repo_directory.glob("*.md")}
+        present = {path.name for path in self.repo_directory.glob("*.md")} - {README}
         published = []
 
         for name, source in waiting.items():
@@ -113,6 +136,7 @@ class ReviewSync:
         self._check_pending()
         self._ensure_repo()
         self._adopt_remote()
+        self._seed_branch()
         imported = self._import_decisions()
         published = self._refresh_queue() or self._dirty()
         if published:

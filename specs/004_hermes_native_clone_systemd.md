@@ -1129,6 +1129,41 @@ opcional, porque la lista de archivos es ilegible por diseno.
 
 El frontmatter NO se indexa para busqueda: es metadata para agentes, no prosa.
 
+### Aprobar desde el movil: la rama `pending`
+
+El MISMO repositorio bare sirve dos ramas con proposito opuesto:
+
+| Rama | Contenido | Quien manda |
+|---|---|---|
+| `main` | notas publicadas | el vault; el cliente solo lee |
+| `pending` | notas esperando decision | el HUMANO decide, el host proyecta |
+
+El cliente clona el mismo remoto DOS VECES, cada clon en su rama, y abre cada
+carpeta como un vault distinto en Obsidian. Obsidian abre carpetas, no ramas, y
+cambiar de rama bajo una carpeta abierta le desordena el indice. Del lado del
+servidor, en cambio, hay un solo bare, un solo `authorized_keys` y una sola
+ruta.
+
+`knowledge-vault-review-sync.service` mantiene la rama `pending`:
+
+1. Adopta el estado del remoto ANTES de escribir nada. A diferencia del espejo
+   publicado, aqui el otro lado es un autor legitimo: una decision escrita en el
+   telefono es del revisor y no puede pisarse.
+2. Copia a `pending/` toda nota que traiga `decision` completo. El importador de
+   siempre la registra en su proxima pasada.
+3. Deja la rama mostrando exactamente lo que espera decision, y empuja.
+
+DOS AUTORIDADES, COSAS DISTINTAS: el host manda sobre QUE NOTAS estan esperando
+—proyecta lo nuevo, retira lo decidido— y el revisor manda sobre CUAL ES LA
+DECISION, este donde este. Separar eso es lo que hace que ambos escriban sin que
+un conflicto sea posible en la practica.
+
+La unidad corre con `PrivateNetwork=yes`: habla solo con el bare de este host, y
+el telefono llega a ese bare por SSH por su cuenta.
+
+Con los campos de revision precargados y vacios, decidir desde Obsidian movil es
+completar tres propiedades y sincronizar.
+
 ### Automatizacion del ciclo
 
 Cuatro timers ejecutan los pasos MECANICOS. La aprobacion humana no se

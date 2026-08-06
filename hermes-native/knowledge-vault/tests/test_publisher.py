@@ -134,6 +134,18 @@ class NoteIdentityTests(unittest.TestCase):
             self.assertEqual(1, len(list(vault.glob("*.md"))))
             self.assertIn("Corregida", published.read_text(encoding="utf-8"))
 
+    def test_an_unchanged_note_is_not_rewritten(self):
+        """The timer republishes every approved record. Rewriting identical
+        bytes churns the mtime, and retrieval caches its revision on mtime, so
+        every search re-hashed the whole vault for nothing."""
+        with tempfile.TemporaryDirectory() as root:
+            approved = self.approved("# Sin cambios\nCuerpo")
+            note = self.publisher(root, [approved])[0].publish()[0]
+            before = note.stat().st_mtime_ns
+            published = self.publisher(root, [approved])[0].publish()
+            self.assertEqual([note], published, "the note must still be reported as published")
+            self.assertEqual(before, note.stat().st_mtime_ns, "an unchanged note was rewritten")
+
     def test_a_revision_keeps_the_file_name_so_links_never_break(self):
         with tempfile.TemporaryDirectory() as root:
             original = self.approved("# Longhorn no esta instalado\nPrimera version")

@@ -26,6 +26,9 @@ def main(spool, decisions, approved):
     joined = 0
     for path in sorted(decisions.glob("*.json")):
         decision = json.loads(path.read_text(encoding="utf-8"))
+        # The reviewer approved the text they had in front of them, which may
+        # differ from what the agent proposed. Theirs is the one that counts.
+        reviewed = decision.pop("markdown", None)
         proposal = proposals.get(decision["proposal_id"])
         if proposal is None:
             print(f"no proposal for decision {path.name}", file=sys.stderr)
@@ -33,6 +36,8 @@ def main(spool, decisions, approved):
         if decision["decision"] != "approved":
             print(f"{decision['proposal_id']}: {decision['decision']}, nothing to publish")
             continue
+        if reviewed:
+            proposal = {**proposal, "markdown": reviewed}
         target = approved / f"{decision['proposal_id']}.json"
         target.write_text(
             json.dumps({"proposal": proposal, "decision": decision}), encoding="utf-8"

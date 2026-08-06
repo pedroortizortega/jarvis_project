@@ -97,6 +97,27 @@ class RunReviewTests(unittest.TestCase):
             self.assertEqual([], recorded)
             self.assertEqual([], list(pending.glob("*.md")))
 
+    def test_the_reviewed_text_is_what_gets_recorded(self):
+        """The reviewer approves the text in front of them. Publishing the
+        original instead discards their edits without a word."""
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            proposal = self.spool_proposal(spool, "---\ntype: fact\ntags: [jayvis]\n---\n# Draft\nCon error.")
+            run_review(spool, pending, decisions)
+            note = pending / f"{proposal.id}.md"
+            note.write_text(
+                f"---\nproposal_id: {proposal.id}\nversion: 1\nreviewer: pedro\n"
+                "decision: approved\nrationale: Corregido\ntype: fact\ntags: [jarvis]\n---\n"
+                "# Draft\nCorregido a mano.\n",
+                encoding="utf-8",
+            )
+            run_review(spool, pending, decisions)
+            recorded = json.loads((decisions / f"{proposal.id}.json").read_text(encoding="utf-8"))
+            self.assertIn("Corregido a mano.", recorded["markdown"])
+            self.assertIn("tags: [jarvis]", recorded["markdown"])
+            self.assertNotIn("reviewer:", recorded["markdown"], "review fields leaked into the note")
+            self.assertNotIn("proposal_id:", recorded["markdown"])
+
     def test_malformed_decision_is_reported_and_kept_for_the_reviewer(self):
         failures = []
         with tempfile.TemporaryDirectory() as root:
@@ -113,6 +134,36 @@ class RunReviewTests(unittest.TestCase):
             self.assertEqual([], list(decisions.glob("*.json")))
         self.assertEqual(1, len(failures))
         self.assertIn("maybe", failures[0].reason)
+
+
+class ApprovalBridgeTests(unittest.TestCase):
+    """The bridge stands in for the control plane; it must carry the reviewed
+    text through, not the text the agent originally proposed."""
+
+    def test_the_approved_record_carries_the_reviewed_text(self):
+        import subprocess
+        import sys
+
+        script = Path(__file__).resolve().parent.parent / "scripts" / "approve_locally.py"
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            spool, decisions, approved = root / "spool", root / "decisions", root / "approved"
+            for directory in (spool, decisions, approved):
+                directory.mkdir()
+            proposal = Proposal.create("---\ntype: fact\n---\n# Draft\nOriginal.", "k", {"agent": "x"})
+            (spool / "p.json").write_text(json.dumps({"proposal": proposal.__dict__}), encoding="utf-8")
+            (decisions / f"{proposal.id}.json").write_text(
+                json.dumps({
+                    "proposal_id": proposal.id, "version": 1, "reviewer": "pedro",
+                    "decision": "approved", "rationale": "ok",
+                    "markdown": "---\ntype: fact\n---\n# Draft\nCorregido por el revisor.\n",
+                }),
+                encoding="utf-8",
+            )
+            subprocess.run([sys.executable, str(script), str(spool), str(decisions), str(approved)], check=True)
+            record = json.loads((approved / f"{proposal.id}.json").read_text(encoding="utf-8"))
+            self.assertIn("Corregido por el revisor.", record["proposal"]["markdown"])
+            self.assertNotIn("markdown", record["decision"], "the decision kept a field it does not own")
 
 
 if __name__ == "__main__":

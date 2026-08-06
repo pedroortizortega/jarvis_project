@@ -55,6 +55,24 @@ class DecisionImporter:
         return decision
 
 
+# Fields the review flow adds; they belong to the decision, not to the note.
+REVIEW_FIELDS = ("proposal_id", "version", "reviewer", "decision", "rationale")
+
+
+def _reviewed_note(path):
+    """The note exactly as the reviewer approved it, minus the review fields.
+
+    What a reviewer approves is the text in front of them. Publishing the
+    original proposal instead would discard their corrections in silence.
+    """
+    text = path.read_text(encoding="utf-8")
+    fields = {k: v for k, v in parse_frontmatter(text).items() if k not in REVIEW_FIELDS}
+    if not fields:
+        return body_of(text).strip() + "\n"
+    lines = [f"{key}: {_render(value)}" for key, value in fields.items()]
+    return "---\n" + "\n".join(lines) + "\n---\n" + body_of(text).strip() + "\n"
+
+
 def _frontmatter(path):
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0] != "---":
@@ -119,7 +137,8 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
                 on_failure(PublicationFailure(str(path), f"invalid decision: {error}"))
             continue
         # 0640: the control plane reads exported decisions as another user.
-        write_atomic(decisions / f"{decision.proposal_id}.json", json.dumps(asdict(decision)), 0o640)
+        payload = {**asdict(decision), "markdown": _reviewed_note(path)}
+        write_atomic(decisions / f"{decision.proposal_id}.json", json.dumps(payload), 0o640)
         path.unlink()
     return projected, recorded
 

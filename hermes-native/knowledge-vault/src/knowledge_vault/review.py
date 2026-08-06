@@ -128,7 +128,18 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
     recorded = []
     importer = DecisionImporter(recorded.append)
     for path in sorted(pending.glob("*.md")):
-        if "decision" not in _frontmatter(path):
+        fields = _frontmatter(path)
+        if "decision" not in fields:
+            # A reviewer who wrote `reviewer` or `rationale` meant to decide.
+            # Treating a typo in `decision` as "not decided yet" leaves them
+            # believing they answered while nothing happens, run after run.
+            if on_failure and ("reviewer" in fields or "rationale" in fields):
+                on_failure(
+                    PublicationFailure(
+                        str(path),
+                        "looks like a decision but has no 'decision' field; check the spelling",
+                    )
+                )
             continue
         try:
             decision = importer.import_file(path)

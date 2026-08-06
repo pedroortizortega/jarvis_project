@@ -118,6 +118,23 @@ class RunReviewTests(unittest.TestCase):
             self.assertNotIn("reviewer:", recorded["markdown"], "review fields leaked into the note")
             self.assertNotIn("proposal_id:", recorded["markdown"])
 
+    def test_an_attempted_decision_missing_its_key_is_reported(self):
+        """A typo in `decision` used to read as 'not decided yet': the reviewer
+        believed they had answered and the system silently disagreed."""
+        failures = []
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            note = pending / "typo.md"
+            note.write_text(
+                "---\nproposal_id: p1\nversion: 1\nreviewer: pedro\n"
+                "devision: approved\nrationale: se me fue una letra\n---\n# Draft\n",
+                encoding="utf-8",
+            )
+            run_review(spool, pending, decisions, on_failure=failures.append)
+            self.assertTrue(note.exists(), "the file must stay for the reviewer to fix")
+        self.assertEqual(1, len(failures))
+        self.assertIn("decision", failures[0].reason)
+
     def test_malformed_decision_is_reported_and_kept_for_the_reviewer(self):
         failures = []
         with tempfile.TemporaryDirectory() as root:

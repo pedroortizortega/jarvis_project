@@ -107,16 +107,22 @@ if [[ -n "$REVIEWER" && -d "/home/$REVIEWER/.hermes/skills" ]]; then
 fi
 
 echo "Units"
-install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-review.service" /etc/systemd/system/
-install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-publisher.service" /etc/systemd/system/
-install -m 0644 "$SOURCE_DIR/systemd/knowledge-vault-mirror.service" /etc/systemd/system/
+install -m 0644 "$SOURCE_DIR"/systemd/*.service /etc/systemd/system/
+install -m 0644 "$SOURCE_DIR"/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-say "installed, both left disabled on purpose"
+# Never enabled from here: starting recurring work on someone's machine is
+# their decision, not a script's.
+say "units and timers installed, none enabled"
 
 cat <<EOF
 
-Installed. Neither unit is enabled: the publisher stays off until a reviewed
-test proposal publishes correctly.
+Installed. Nothing is enabled yet. To run the mechanical steps automatically:
+
+  sudo systemctl enable --now knowledge-vault-{review,approve,publisher,mirror}.timer
+  systemctl list-timers 'knowledge-vault-*'
+
+Your approval stays manual by design: edit the projected file in
+$STATE/pending and the next review run records your decision.
 
 Run one cycle by hand. The runners read their paths from the environment, which
 systemd normally supplies:

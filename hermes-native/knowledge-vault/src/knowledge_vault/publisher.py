@@ -87,6 +87,12 @@ class Publisher:
         """A revision reuses the id of the note it supersedes: that is what
         keeps every existing link to it valid."""
         proposal = record.proposal
+        # An approved record stays on disk and a timer re-publishes it every
+        # few minutes. Filing it under a fresh id each time filled the vault
+        # with copies of the same note, so publishing must be idempotent.
+        published = manifest.get(proposal.id)
+        if published:
+            return self.vault_directory / published, published
         superseded = manifest.get(proposal.predecessor_id) if proposal.predecessor_id else None
         if superseded:
             return self.vault_directory / superseded, superseded

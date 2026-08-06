@@ -71,6 +71,10 @@ class Publisher:
         # proposal id -> published file name, so a revision replaces the note it
         # supersedes instead of leaving a stale duplicate beside it.
         self.manifest_path = self.state_directory / "notes.json"
+        # Records that can never become valid. Reporting them on every run
+        # leaves the unit permanently red, and a unit that is always red stops
+        # being read.
+        self.unpublishable_path = self.state_directory / "unpublishable.json"
         self.failures = []
 
     def _manifest(self):
@@ -101,16 +105,29 @@ class Publisher:
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
+    def _unpublishable(self):
+        try:
+            return set(json.loads(self.unpublishable_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return set()
+
     def publish(self):
         self.failures = []
         published = []
         with self._fence():
             self.vault_directory.mkdir(parents=True, exist_ok=True)
             manifest = self._manifest()
+            known_bad = self._unpublishable()
             for record in self.source():
+                if record.proposal.id in known_bad:
+                    continue
                 failure = self._validate(record)
                 if failure:
+                    # Validation can never pass on a later run, unlike a write
+                    # that failed because the disk was full.
                     self.failures.append(failure)
+                    known_bad.add(record.proposal.id)
+                    write_atomic(self.unpublishable_path, json.dumps(sorted(known_bad)), 0o640)
                     continue
                 try:
                     published.append(self._write(record, manifest))

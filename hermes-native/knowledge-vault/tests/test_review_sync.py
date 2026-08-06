@@ -71,7 +71,7 @@ class ReviewSyncTests(unittest.TestCase):
             (pending / "p1.md").unlink()
             imported, published = sync.sync()
             self.assertEqual(["p1.md"], published)
-            self.assertEqual("", git(remote, "ls-tree", "--name-only", "pending"))
+            self.assertEqual("README.md", git(remote, "ls-tree", "--name-only", "pending"))
 
     def test_an_unchanged_queue_makes_no_commit(self):
         with tempfile.TemporaryDirectory() as root:
@@ -81,6 +81,15 @@ class ReviewSyncTests(unittest.TestCase):
             before = git(remote, "rev-parse", "pending")
             self.assertEqual(([], []), sync.sync())
             self.assertEqual(before, git(remote, "rev-parse", "pending"))
+
+    def test_the_branch_exists_before_anything_is_waiting(self):
+        """The phone has to be set up at some point, and that point is rarely
+        the moment a note happens to be in the queue."""
+        with tempfile.TemporaryDirectory() as root:
+            sync, pending, repo, remote = self.setup(root)
+            sync.sync()
+            self.assertIn("pending", git(remote, "branch", "--list", "pending"))
+            self.assertIn("README", git(remote, "ls-tree", "--name-only", "pending"))
 
     def test_it_refuses_to_create_the_pending_directory(self):
         with tempfile.TemporaryDirectory() as root:

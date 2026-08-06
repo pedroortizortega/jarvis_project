@@ -142,8 +142,11 @@ class ReviewSync:
         if published:
             self._git("add", "-A")
             self._git("commit", "-q", "-m", f"Review queue: {len(published)} change(s)")
-            if self.remote:
-                self._git("push", "-q", "--set-upstream", "origin", self.branch)
+        if self.remote and self._git("rev-parse", "--verify", "HEAD", check=False).returncode == 0:
+            # Push on every run, not only when this one had changes. Pushing
+            # solely after a commit left a failed push stranded: the next runs
+            # found nothing to do and never sent what was already committed.
+            self._git("push", "-q", "--set-upstream", "origin", self.branch)
         return imported, published
 
 

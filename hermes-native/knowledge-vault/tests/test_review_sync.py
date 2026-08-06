@@ -91,6 +91,18 @@ class ReviewSyncTests(unittest.TestCase):
             self.assertIn("pending", git(remote, "branch", "--list", "pending"))
             self.assertIn("README", git(remote, "ls-tree", "--name-only", "pending"))
 
+    def test_a_push_that_never_landed_is_retried(self):
+        """The push only happened when a run had changes to commit, so one
+        failed push left the commit stranded and no later run ever sent it."""
+        with tempfile.TemporaryDirectory() as root:
+            sync, pending, repo, remote = self.setup(root)
+            (pending / "p1.md").write_text(NOTE, encoding="utf-8")
+            sync.sync()
+            subprocess.run(["git", "branch", "-q", "-D", "pending"], cwd=remote, check=True)
+
+            sync.sync()
+            self.assertIn("p1.md", git(remote, "ls-tree", "--name-only", "pending"))
+
     def test_it_refuses_to_create_the_pending_directory(self):
         with tempfile.TemporaryDirectory() as root:
             sync = ReviewSync(Path(root) / "absent", Path(root) / "repo", None)

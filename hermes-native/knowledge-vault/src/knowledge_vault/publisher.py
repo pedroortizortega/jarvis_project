@@ -167,7 +167,11 @@ class Publisher:
         fields.setdefault("timestamp", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         fields["aliases"] = list(dict.fromkeys(alias for alias in fields.get("aliases") or [] if alias))
         note = render(record.proposal.markdown, fields, note_id=target.stem)
-        # 0640: the publisher owns the vault, read-only consumers share its group.
-        write_atomic(target, note, 0o640)
+        # Writing identical bytes still churns the mtime, and retrieval caches
+        # the vault revision on mtime: republishing every few minutes would
+        # make every search re-hash the whole vault for nothing.
+        if not (target.exists() and target.read_text(encoding="utf-8") == note):
+            # 0640: the publisher owns the vault, read-only consumers share its group.
+            write_atomic(target, note, 0o640)
         manifest[record.proposal.id] = target.name
         return target

@@ -27,7 +27,17 @@ class PendingProjector:
         """
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{proposal.id}.md"
-        fields = {"proposal_id": proposal.id, "version": 1, **parse_frontmatter(proposal.markdown)}
+        # The review fields ship empty and ready to fill: typing the key from
+        # memory is how `devision` happened, and a field already present only
+        # needs a value.
+        fields = {
+            "proposal_id": proposal.id,
+            "version": 1,
+            **parse_frontmatter(proposal.markdown),
+            "reviewer": "",
+            "decision": "",
+            "rationale": "",
+        }
         lines = [f"{key}: {_render(value)}" for key, value in fields.items()]
         note = "---\n" + "\n".join(lines) + "\n---\n" + body_of(proposal.markdown).strip() + "\n"
         # 0660: the human reviewer writes the decision into this very file.
@@ -129,15 +139,16 @@ def run_review(spool_directory, pending_directory, decisions_directory, on_failu
     importer = DecisionImporter(recorded.append)
     for path in sorted(pending.glob("*.md")):
         fields = _frontmatter(path)
-        if "decision" not in fields:
-            # A reviewer who wrote `reviewer` or `rationale` meant to decide.
-            # Treating a typo in `decision` as "not decided yet" leaves them
-            # believing they answered while nothing happens, run after run.
-            if on_failure and ("reviewer" in fields or "rationale" in fields):
+        if not fields.get("decision"):
+            # Every pending note carries the fields empty, so an empty decision
+            # simply means nobody has decided yet. A reason without a decision
+            # is different: it is half an answer, and saying nothing would
+            # leave the reviewer believing they had finished.
+            if on_failure and (fields.get("rationale") or fields.get("reviewer")):
                 on_failure(
                     PublicationFailure(
                         str(path),
-                        "looks like a decision but has no 'decision' field; check the spelling",
+                        "a reason is written but 'decision' is empty; fill it with approved or rejected",
                     )
                 )
             continue

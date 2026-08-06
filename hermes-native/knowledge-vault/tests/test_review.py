@@ -41,6 +41,16 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(["fisica"], fields["tags"])
             self.assertTrue(body_of(text).startswith("# Titulo"))
 
+    def test_the_projected_note_carries_empty_review_fields(self):
+        """Typing the key from memory produced `devision`. If the field is
+        already there, the reviewer only fills a value."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = PendingProjector(directory).project(self.proposal())
+            fields = parse_frontmatter(path.read_text(encoding="utf-8"))
+            for key in ("reviewer", "decision", "rationale"):
+                self.assertIn(key, fields)
+                self.assertEqual("", fields[key])
+
     def test_projected_file_is_writable_by_the_reviewer_group(self):
         with tempfile.TemporaryDirectory() as directory:
             path = PendingProjector(directory).project(self.proposal())

@@ -53,7 +53,7 @@ class PublisherTests(unittest.TestCase):
             publisher, vault = self.publisher(root, [approved])
             note = publisher.publish()[0]
             revised = ApprovedRecord(
-                Proposal.create("# Note\nBroken", "publish-key-2", approved.proposal.provenance),
+                Proposal.create("---\ntype: fact\n---\n# Note\nBroken", "publish-key-2", approved.proposal.provenance),
                 Decision(approved.proposal.id, 1, "alex", "approved", "Verified"),
             )
             failing, _ = self.publisher(root, [ApprovedRecord(revised.proposal, revised.decision)])
@@ -141,6 +141,43 @@ class NoteIdentityTests(unittest.TestCase):
             self.assertEqual([], publisher.publish())
             self.assertEqual([], list(vault.glob("*.md")))
             self.assertIn("type", publisher.failures[0].reason)
+
+
+class UnpublishableTests(unittest.TestCase):
+    """A record that can never be valid must be reported once, not on every run
+    forever: a unit that is always red stops being read."""
+
+    def publisher(self, root, records):
+        root = Path(root)
+        return Publisher(root / "vault", lambda: list(records), root / "state")
+
+    def bad(self):
+        proposal = Proposal.create("# Sin tipo\nCuerpo", "legacy-key", {"agent": "hermes"})
+        return ApprovedRecord(proposal, Decision(proposal.id, 1, "pedro", "approved", "ok"))
+
+    def test_it_is_reported_the_first_time(self):
+        with tempfile.TemporaryDirectory() as root:
+            publisher = self.publisher(root, [self.bad()])
+            publisher.publish()
+            self.assertEqual(1, len(publisher.failures))
+
+    def test_it_is_not_reported_again(self):
+        with tempfile.TemporaryDirectory() as root:
+            record = self.bad()
+            self.publisher(root, [record]).publish()
+            again = self.publisher(root, [record])
+            self.assertEqual([], again.publish())
+            self.assertEqual([], again.failures, "a permanent failure was reported twice")
+
+    def test_a_transient_failure_is_always_reported(self):
+        with tempfile.TemporaryDirectory() as root:
+            good = record()
+            publisher = self.publisher(root, [good])
+            with patch("knowledge_vault.atomic.os.replace", side_effect=OSError("disk full")):
+                publisher.publish()
+            self.assertEqual(1, len(publisher.failures))
+            retry = self.publisher(root, [good])
+            self.assertEqual(1, len(retry.publish()), "a transient failure was quarantined")
 
 
 class ApprovedSpoolTests(unittest.TestCase):

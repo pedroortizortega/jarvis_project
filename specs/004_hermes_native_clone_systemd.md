@@ -1129,6 +1129,42 @@ opcional, porque la lista de archivos es ilegible por diseno.
 
 El frontmatter NO se indexa para busqueda: es metadata para agentes, no prosa.
 
+### Automatizacion del ciclo
+
+Cuatro timers ejecutan los pasos MECANICOS. La aprobacion humana no se
+automatiza nunca: es la unica parte que existe porque requiere una persona.
+
+| Timer | Cada | Hace |
+|---|---|---|
+| `knowledge-vault-review.timer` | 2 min | proyecta propuestas nuevas e importa decisiones escritas |
+| `knowledge-vault-approve.timer` | 2 min | une propuesta y decision en un registro aprobado |
+| `knowledge-vault-publisher.timer` | 3 min | publica lo aprobado en el vault canonico |
+| `knowledge-vault-mirror.timer` | 10 min | espeja y empuja al repositorio privado |
+
+```bash
+sudo systemctl enable --now knowledge-vault-{review,approve,publisher,mirror}.timer
+systemctl list-timers 'knowledge-vault-*'
+```
+
+El instalador los instala pero NUNCA los habilita: arrancar trabajo recurrente
+en la maquina de alguien es decision suya, no de un script.
+
+Cada paso es idempotente y una corrida sin trabajo cuesta milisegundos y no
+escribe nada, asi que `Persistent=false`: una corrida perdida simplemente
+ocurre en la siguiente. No hay estado que reconstruir.
+
+El flujo completo, sin intervencion salvo la tuya:
+
+```text
+JARVIS propone -> (2 min) proyectada a pending -> TU DECIDES en Obsidian
+   -> (2 min) decision importada -> (2 min) registro aprobado
+   -> (3 min) publicada en el vault -> (10 min) espejada a git -> tu telefono
+```
+
+Desde que apruebas hasta que la nota esta en el telefono pasan unos 15 minutos
+en el peor caso. Bajar los intervalos es posible, pero el costo de una nota que
+tarda un rato es mucho menor que el de un ciclo que se dispara sobre si mismo.
+
 ### Espejo Git para clientes de la red privada
 
 trantor corre Linux y iCloud no tiene cliente nativo ahi, asi que el vault

@@ -44,9 +44,21 @@ class GitMirror:
         )
 
     def _ensure_repo(self):
+        """Adopt the remote's history when starting a fresh working tree.
+
+        Initialising beside a remote that already has commits produced two
+        unrelated histories, and every push from then on was rejected as a
+        non-fast-forward — permanently, since the mirror never fetches.
+        """
         self.repo_directory.mkdir(parents=True, exist_ok=True)
-        if not (self.repo_directory / ".git").exists():
-            self._git("init", "-q", "-b", self.branch)
+        if (self.repo_directory / ".git").exists():
+            return
+        self._git("init", "-q", "-b", self.branch)
+        if not self.remote:
+            return
+        self._git("remote", "add", "origin", self.remote)
+        if self._git("fetch", "-q", "origin", self.branch, check=False).returncode == 0:
+            self._git("reset", "-q", "--hard", f"origin/{self.branch}")
 
     def _mirror_files(self):
         """Make the mirror match the vault exactly, and report what moved."""

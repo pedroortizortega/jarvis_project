@@ -18,7 +18,7 @@ class MirrorTests(unittest.TestCase):
     def setup(self, root):
         root = Path(root)
         vault, repo = root / "vault", root / "mirror"
-        vault.mkdir()
+        vault.mkdir(parents=True)
         (vault / "kubernetes.md").write_text("# Kubernetes\nFirst\n", encoding="utf-8")
         return GitMirror(vault, repo), vault, repo
 
@@ -105,6 +105,27 @@ class MirrorTests(unittest.TestCase):
             del mirror._commit
             self.assertEqual(["kubernetes.md"], mirror.sync())
             self.assertIn("kubernetes.md", git(repo, "show", "--name-only", "--format="))
+
+    def test_it_adopts_a_remote_that_already_has_history(self):
+        """Starting a fresh working tree beside a remote that already has
+        commits produced unrelated histories, and every push was rejected as a
+        non-fast-forward from then on."""
+        with tempfile.TemporaryDirectory() as root:
+            remote = Path(root) / "remote.git"
+            subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(remote)], check=True)
+
+            seed, _, seed_repo = self.setup(str(Path(root) / "seed"))
+            seed.remote = str(remote)
+            seed.sync()
+
+            mirror, vault, _ = self.setup(str(Path(root) / "fresh"))
+            mirror.remote = str(remote)
+            (vault / "voice.md").write_text("# Voice\nPiper\n", encoding="utf-8")
+            mirror.sync()
+
+            names = git(remote, "ls-tree", "--name-only", "main").split()
+            self.assertIn("voice.md", names)
+            self.assertIn("kubernetes.md", names, "the remote history was discarded")
 
     def test_changes_are_pushed_to_the_configured_remote(self):
         with tempfile.TemporaryDirectory() as root:

@@ -14,6 +14,7 @@ knowledge-vault-mirror = "knowledge_vault.mirror:main"
 knowledge-vault-propose = "knowledge_vault.propose:main"
 knowledge-vault-search = "knowledge_vault.search:main"
 knowledge-vault-decide = "knowledge_vault.decide:main"
+knowledge-vault-pending = "knowledge_vault.decide:list_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

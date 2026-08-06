@@ -98,6 +98,7 @@ test -x "$PREFIX/.venv/bin/knowledge-vault-mirror"
 test -x "$PREFIX/.venv/bin/knowledge-vault-propose"
 test -x "$PREFIX/.venv/bin/knowledge-vault-search"
 test -x "$PREFIX/.venv/bin/knowledge-vault-decide"
+test -x "$PREFIX/.venv/bin/knowledge-vault-pending"
 say "entry points installed"
 
 if [[ -n "$REVIEWER" && -d "/home/$REVIEWER/.hermes/skills" ]]; then

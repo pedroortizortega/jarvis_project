@@ -11,10 +11,37 @@ import os
 import sys
 from pathlib import Path
 
+from dataclasses import dataclass
+
 from .atomic import write_atomic
-from .note import body_of, parse_frontmatter
+from .note import body_of, parse_frontmatter, title_of
 
 DECISIONS = ("approved", "rejected")
+
+
+@dataclass(frozen=True)
+class Waiting:
+    proposal_id: str
+    title: str
+
+
+def awaiting_decision(pending_directory):
+    """What is waiting for a human, with the id a decision needs.
+
+    Deciding takes a proposal id. Without a way to read the queue that id is
+    unknowable, and the decide command cannot be used at all.
+    """
+    waiting = []
+    for path in sorted(Path(pending_directory).glob("*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fields = parse_frontmatter(text)
+        if fields.get("decision"):
+            continue
+        waiting.append(Waiting(fields.get("proposal_id") or path.stem, title_of(text) or path.stem))
+    return waiting
 
 
 def _render(value):
@@ -48,6 +75,20 @@ def decide(proposal_id, decision, rationale, pending_directory, reviewer=None, s
     note = "---\n" + "\n".join(lines) + "\n---\n" + body_of(text).strip() + "\n"
     # 0660: the pending area is where the human writes, so it stays writable.
     return write_atomic(path, note, 0o660)
+
+
+def list_main():
+    try:
+        waiting = awaiting_decision(os.environ["KNOWLEDGE_VAULT_PENDING_DIR"])
+    except (KeyError, OSError) as error:
+        print(f"knowledge-vault pending: {error}", file=sys.stderr)
+        return 1
+    if not waiting:
+        print("nothing is waiting for a decision")
+        return 0
+    for item in waiting:
+        print(f"{item.proposal_id}  {item.title}")
+    return 0
 
 
 def main():

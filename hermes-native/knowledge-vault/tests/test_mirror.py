@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from knowledge_vault.mirror import GitMirror, VaultUnreadable
+from knowledge_vault.mirror import IDENTITY, GitMirror, VaultUnreadable
 
 
 def git(repo, *args):
@@ -126,6 +126,32 @@ class MirrorTests(unittest.TestCase):
             names = git(remote, "ls-tree", "--name-only", "main").split()
             self.assertIn("voice.md", names)
             self.assertIn("kubernetes.md", names, "the remote history was discarded")
+
+    def test_it_recovers_when_the_remote_moved_on_without_it(self):
+        """A client that pushes — a phone syncing the vault, say — leaves the
+        remote ahead, and every later push is rejected until someone
+        intervenes. The vault is the source of truth, so the mirror adopts the
+        remote history and puts the vault state back on top."""
+        with tempfile.TemporaryDirectory() as root:
+            remote = Path(root) / "remote.git"
+            subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(remote)], check=True)
+            mirror, vault, repo = self.setup(root)
+            mirror.remote = str(remote)
+            mirror.sync()
+
+            outsider = Path(root) / "outsider"
+            subprocess.run(["git", "clone", "-q", str(remote), str(outsider)], check=True)
+            (outsider / "phone-note.md").write_text("# Desde el telefono\n", encoding="utf-8")
+            for args in (["add", "-A"], ["commit", "-q", "-m", "from the phone"], ["push", "-q"]):
+                subprocess.run(["git", *args], cwd=outsider, check=True, env={**os.environ, **IDENTITY})
+
+            (vault / "kubernetes.md").write_text("# Kubernetes\nThird\n", encoding="utf-8")
+            mirror.sync()
+
+            names = git(remote, "ls-tree", "--name-only", "main").split()
+            self.assertIn("kubernetes.md", names)
+            self.assertNotIn("phone-note.md", names, "the mirror must reflect the vault, not the phone")
+            self.assertIn("from the phone", git(remote, "log", "--format=%s"), "history was discarded")
 
     def test_changes_are_pushed_to_the_configured_remote(self):
         with tempfile.TemporaryDirectory() as root:

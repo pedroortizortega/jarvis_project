@@ -57,6 +57,8 @@ install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/approved" "$STATE/decis
 # Agents write proposals here, so the group may write. A proposal carries no
 # authority: it still needs a recorded human approval to reach the vault.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/proposals"
+# Derived, disposable data that any group member may rebuild while searching.
+install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/index"
 # Only pending is group-writable: the human edits the projected file in place.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/pending"
 # The mirror serves private-network clients: vault read-only, its own dir.
@@ -94,6 +96,7 @@ test -x "$PREFIX/.venv/bin/knowledge-vault-review"
 test -x "$PREFIX/.venv/bin/knowledge-vault-publisher"
 test -x "$PREFIX/.venv/bin/knowledge-vault-mirror"
 test -x "$PREFIX/.venv/bin/knowledge-vault-propose"
+test -x "$PREFIX/.venv/bin/knowledge-vault-search"
 say "entry points installed"
 
 if [[ -n "$REVIEWER" && -d "/home/$REVIEWER/.hermes/skills" ]]; then

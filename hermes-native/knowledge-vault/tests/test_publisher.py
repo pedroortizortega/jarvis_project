@@ -104,6 +104,36 @@ class NoteIdentityTests(unittest.TestCase):
             published = publisher.publish()
             self.assertEqual(2, len(set(published)))
 
+    def test_publishing_the_same_record_twice_yields_one_note(self):
+        """The approved record stays on disk, so a timer re-publishes it every
+        few minutes. Without this each run filed a brand new note and the vault
+        filled with copies of the same thing."""
+        with tempfile.TemporaryDirectory() as root:
+            approved = self.approved("# Un solo storage class\nCuerpo")
+            first = self.publisher(root, [approved])[0].publish()[0]
+            publisher, vault = self.publisher(root, [approved])
+            self.assertEqual([first], publisher.publish(), "the same record was filed twice")
+            self.assertEqual(1, len(list(vault.glob("*.md"))))
+
+    def test_republishing_updates_the_note_in_place(self):
+        with tempfile.TemporaryDirectory() as root:
+            approved = self.approved("# Titulo\nPrimera")
+            self.publisher(root, [approved])[0].publish()
+            corrected = ApprovedRecord(
+                Proposal(
+                    approved.proposal.id,
+                    "---\ntype: fact\n---\n# Titulo\nCorregida",
+                    approved.proposal.idempotency_key,
+                    approved.proposal.provenance,
+                    None,
+                ),
+                approved.decision,
+            )
+            publisher, vault = self.publisher(root, [corrected])
+            published = publisher.publish()[0]
+            self.assertEqual(1, len(list(vault.glob("*.md"))))
+            self.assertIn("Corregida", published.read_text(encoding="utf-8"))
+
     def test_a_revision_keeps_the_file_name_so_links_never_break(self):
         with tempfile.TemporaryDirectory() as root:
             original = self.approved("# Longhorn no esta instalado\nPrimera version")

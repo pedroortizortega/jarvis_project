@@ -59,6 +59,8 @@ install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/approved" "$STATE/decis
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/proposals"
 # Derived, disposable data that any group member may rebuild while searching.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/index"
+# Working tree for the review branch that mobile clients decide on.
+install -d -o "$REVIEW_USER" -g "$GROUP" -m 0750 "$STATE/review"
 # Only pending is group-writable: the human edits the projected file in place.
 install -d -o "$REVIEW_USER" -g "$GROUP" -m 2770 "$STATE/pending"
 # The mirror serves private-network clients: vault read-only, its own dir.
@@ -99,6 +101,7 @@ test -x "$PREFIX/.venv/bin/knowledge-vault-propose"
 test -x "$PREFIX/.venv/bin/knowledge-vault-search"
 test -x "$PREFIX/.venv/bin/knowledge-vault-decide"
 test -x "$PREFIX/.venv/bin/knowledge-vault-pending"
+test -x "$PREFIX/.venv/bin/knowledge-vault-review-sync"
 say "entry points installed"
 
 if [[ -n "$REVIEWER" && -d "/home/$REVIEWER/.hermes/skills" ]]; then
@@ -120,7 +123,7 @@ cat <<EOF
 
 Installed. Nothing is enabled yet. To run the mechanical steps automatically:
 
-  sudo systemctl enable --now knowledge-vault-{review,approve,publisher,mirror}.timer
+  sudo systemctl enable --now knowledge-vault-{review,review-sync,approve,publisher,mirror}.timer
   systemctl list-timers 'knowledge-vault-*'
 
 Your approval stays manual by design: edit the projected file in

@@ -118,6 +118,35 @@ class RunReviewTests(unittest.TestCase):
             self.assertNotIn("reviewer:", recorded["markdown"], "review fields leaked into the note")
             self.assertNotIn("proposal_id:", recorded["markdown"])
 
+    def test_an_untouched_note_with_empty_fields_is_silent(self):
+        """Every pending note now carries empty review fields. Reporting them
+        as malformed would put the queue permanently in alarm."""
+        failures = []
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            self.spool_proposal(spool)
+            run_review(spool, pending, decisions, on_failure=failures.append)
+            projected, recorded = run_review(spool, pending, decisions, on_failure=failures.append)
+        self.assertEqual([], recorded)
+        self.assertEqual([], failures, "an untouched note was reported as a problem")
+
+    def test_a_reason_without_a_decision_is_reported(self):
+        """The reviewer wrote why but not what: that is a half-finished
+        decision, not an undecided note."""
+        failures = []
+        with tempfile.TemporaryDirectory() as root:
+            spool, pending, decisions = self.layout(root)
+            note = pending / "half.md"
+            note.write_text(
+                "---\nproposal_id: p1\nversion: 1\nreviewer: pedro\n"
+                "decision: \nrationale: no me convence\n---\n# Draft\n",
+                encoding="utf-8",
+            )
+            run_review(spool, pending, decisions, on_failure=failures.append)
+            self.assertTrue(note.exists())
+        self.assertEqual(1, len(failures))
+        self.assertIn("decision", failures[0].reason)
+
     def test_an_attempted_decision_missing_its_key_is_reported(self):
         """A typo in `decision` used to read as 'not decided yet': the reviewer
         believed they had answered and the system silently disagreed."""

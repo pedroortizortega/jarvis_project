@@ -103,6 +103,16 @@ class ReviewSyncTests(unittest.TestCase):
             sync.sync()
             self.assertIn("p1.md", git(remote, "ls-tree", "--name-only", "pending"))
 
+    def test_it_accepts_a_remote_owned_by_another_user(self):
+        """The bare repository belongs to the mirror account and this runs as
+        the review account. Git refuses a repository owned by someone else
+        unless told the path is trusted."""
+        with tempfile.TemporaryDirectory() as root:
+            sync, _, _, remote = self.setup(root)
+            environment = sync._environment()
+            self.assertEqual("safe.directory", environment["GIT_CONFIG_KEY_0"])
+            self.assertEqual(str(remote), environment["GIT_CONFIG_VALUE_0"])
+
     def test_it_refuses_to_create_the_pending_directory(self):
         with tempfile.TemporaryDirectory() as root:
             sync = ReviewSync(Path(root) / "absent", Path(root) / "repo", None)

@@ -36,6 +36,23 @@ class ReviewSync:
         self.remote = remote
         self.branch = branch
 
+    def _environment(self):
+        """Trust the bare repository even though another account owns it.
+
+        It belongs to the mirror user and this runs as the review user, so git
+        refuses it as dubious ownership. The exception is passed per command
+        rather than written to a config file: nothing persists, and no other
+        repository on the host becomes trusted by accident.
+        """
+        environment = {**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"}
+        if self.remote:
+            environment.update(
+                GIT_CONFIG_COUNT="1",
+                GIT_CONFIG_KEY_0="safe.directory",
+                GIT_CONFIG_VALUE_0=str(self.remote),
+            )
+        return environment
+
     def _git(self, *args, check=True):
         return subprocess.run(
             ["git", *args],
@@ -43,7 +60,7 @@ class ReviewSync:
             capture_output=True,
             text=True,
             check=check,
-            env={**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"},
+            env=self._environment(),
         )
 
     def _check_pending(self):

@@ -82,6 +82,9 @@ fi
 # blocks traversal, but the repository must not depend on that to stay private.
 chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
 chmod -R o= /srv/git/knowledge-vault.git
+# Two accounts write here — the mirror publishes notes, review-sync carries the
+# queue — so new objects must stay writable by the group that owns both.
+git -C /srv/git/knowledge-vault.git config core.sharedRepository group
 say "/srv/git/knowledge-vault.git"
 say "$PREFIX/vault, $STATE/{proposals,pending,decisions,approved,publisher}"
 

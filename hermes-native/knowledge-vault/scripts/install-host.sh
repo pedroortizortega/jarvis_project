@@ -80,13 +80,15 @@ if [[ ! -d /srv/git/knowledge-vault.git ]]; then
 fi
 # git init leaves the repository world-readable. The parent directory already
 # blocks traversal, but the repository must not depend on that to stay private.
-chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
-chmod -R o= /srv/git/knowledge-vault.git
 # Two accounts write here — the mirror publishes notes, review-sync carries the
-# queue — so new objects must stay writable by the group that owns both.
+# queue — so new objects must stay writable by the group that owns both. This
+# runs BEFORE the chown: git rewrites the config file rather than editing it,
+# so under sudo it would leave a root-owned config that neither account reads.
 git --git-dir=/srv/git/knowledge-vault.git \
   -c safe.directory=/srv/git/knowledge-vault.git \
   config core.sharedRepository group
+chown -R "$MIRROR_USER:$GROUP" /srv/git/knowledge-vault.git
+chmod -R o=,g+rwX /srv/git/knowledge-vault.git
 say "/srv/git/knowledge-vault.git"
 say "$PREFIX/vault, $STATE/{proposals,pending,decisions,approved,publisher}"
 

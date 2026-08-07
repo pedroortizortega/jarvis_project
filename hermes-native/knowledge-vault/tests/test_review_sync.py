@@ -109,9 +109,9 @@ class ReviewSyncTests(unittest.TestCase):
         unless told the path is trusted."""
         with tempfile.TemporaryDirectory() as root:
             sync, _, _, remote = self.setup(root)
-            environment = sync._environment()
-            self.assertEqual("safe.directory", environment["GIT_CONFIG_KEY_0"])
-            self.assertEqual(str(remote), environment["GIT_CONFIG_VALUE_0"])
+            sync.sync()
+            trust = Path(sync._environment()["GIT_CONFIG_GLOBAL"])
+            self.assertIn(str(remote), trust.read_text(encoding="utf-8"))
 
     def test_it_refuses_to_create_the_pending_directory(self):
         with tempfile.TemporaryDirectory() as root:

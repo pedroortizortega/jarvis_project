@@ -36,22 +36,26 @@ class ReviewSync:
         self.remote = remote
         self.branch = branch
 
+    def _trust_path(self):
+        return self.repo_directory.parent / "gitconfig"
+
     def _environment(self):
         """Trust the bare repository even though another account owns it.
 
         It belongs to the mirror user and this runs as the review user, so git
-        refuses it as dubious ownership. The exception is passed per command
-        rather than written to a config file: nothing persists, and no other
-        repository on the host becomes trusted by accident.
+        refuses it as dubious ownership. `safe.directory` is deliberately
+        ignored when it arrives through -c or the environment — otherwise a
+        repository could declare itself trustworthy — so it has to come from a
+        real global config. This one names a single path and belongs to this
+        service alone.
         """
-        environment = {**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"}
-        if self.remote:
-            environment.update(
-                GIT_CONFIG_COUNT="1",
-                GIT_CONFIG_KEY_0="safe.directory",
-                GIT_CONFIG_VALUE_0=str(self.remote),
-            )
-        return environment
+        return {
+            **os.environ,
+            **IDENTITY,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_GLOBAL": str(self._trust_path()),
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+        }
 
     def _git(self, *args, check=True):
         return subprocess.run(
@@ -73,6 +77,10 @@ class ReviewSync:
 
     def _ensure_repo(self):
         self.repo_directory.mkdir(parents=True, exist_ok=True)
+        if self.remote:
+            self._trust_path().write_text(
+                f"[safe]\n\tdirectory = {self.remote}\n", encoding="utf-8"
+            )
         if (self.repo_directory / ".git").exists():
             return
         self._git("init", "-q", "-b", self.branch)

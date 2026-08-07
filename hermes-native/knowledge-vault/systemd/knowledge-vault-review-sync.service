@@ -3,6 +3,7 @@ Description=Knowledge vault review queue sync for mobile clients
 Documentation=file:///opt/knowledge-vault/README.md
 
 [Service]
+Environment=HOME=/var/lib/knowledge-vault/review
 Type=oneshot
 User=knowledge-vault-review
 Group=knowledge-vault
@@ -25,7 +26,9 @@ ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictSUIDSGID=yes
+# The shared bare repository is group-shared, which makes git mark directories
+# setgid so both accounts keep write access. RestrictSUIDSGID forbids exactly
+# that, and the push fails with EPERM, so it is deliberately absent here.
 RestrictNamespaces=yes
 LockPersonality=yes
 SystemCallArchitectures=native

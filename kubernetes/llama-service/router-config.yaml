@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llama-router-config
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: llama-router
+    app.kubernetes.io/part-of: local-llm-platform
+data:
+  models.ini: |
+    version = 1
+
+    [*]
+    n-gpu-layers = auto
+    fit = on
+    parallel = 1
+    threads = 16
+    threads-batch = 24
+    flash-attn = auto
+    load-mode = mmap
+    cont-batching = true
+    cache-prompt = true
+    cache-ram = 0
+    jinja = true
+    metrics = true
+    no-ui = true
+
+    [qwen3.5-9b]
+    model = /models/daily/Qwen3.5-9B-Q6_K.gguf
+    ctx-size = 262144
+    fit-target = 2048
+    cache-type-k = q8_0
+    cache-type-v = q8_0
+    kv-offload = true
+    ctx-checkpoints = 4
+    load-on-startup = true
+    stop-timeout = 30
+
+    [qwen3.6-27b-q3]
+    model = /models/large/Qwen3.6-27B-Q3_K_S.gguf
+    ctx-size = 65536
+    fit-target = 2048
+    cache-type-k = f16
+    cache-type-v = f16
+    no-kv-offload = true
+    ctx-checkpoints = 4
+    load-on-startup = false
+    stop-timeout = 30

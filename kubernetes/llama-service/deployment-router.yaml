@@ -1,23 +1,31 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llama-server-q6
+  name: llama-router
   namespace: llms
+  labels:
+    app.kubernetes.io/name: llama-router
+    app.kubernetes.io/part-of: local-llm-platform
 spec:
-  # Safe default: never run this beside vLLM or the IQ4 llama-server on one GPU.
-  replicas: 0
+  replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: llama-server-q6
+      app: llama-router
   template:
     metadata:
       labels:
-        app: llama-server-q6
+        app: llama-router
         app.kubernetes.io/name: llama-server
-        app.kubernetes.io/instance: qwen36-27b-ud-q6-k-xl
+        app.kubernetes.io/instance: daily-large-router
         app.kubernetes.io/part-of: local-llm-platform
+        model.huggingface.co/source: hub
+        model.huggingface.co/base-model-official: "true"
+      annotations:
+        model.huggingface.co/repositories: unsloth/Qwen3.5-9B-GGUF,unsloth/Qwen3.6-27B-GGUF
+        model.huggingface.co/base-models: Qwen/Qwen3.5-9B,Qwen/Qwen3.6-27B
+        model.huggingface.co/tags: base_model:Qwen,base_model:quantized:Qwen
     spec:
       automountServiceAccountToken: false
       runtimeClassName: nvidia
@@ -40,52 +48,23 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: llama-server
+        - name: llama-router
           image: ghcr.io/ggml-org/llama.cpp:server-cuda-b10156@sha256:4c0ece468721077a8bff8c114f8b0a92a8604ed310c91939fadfe37595a53b9e
           imagePullPolicy: IfNotPresent
           args:
-            - --model
-            - /models/Qwen3.6-27B-UD-Q6_K_XL.gguf
-            - --alias
-            - qwen3.6-27b-q6
+            - --models-preset
+            - /config/models.ini
+            - --models-max
+            - "1"
+            - --models-autoload
             - --host
             - 0.0.0.0
             - --port
             - "8080"
             - --api-key-file
             - /run/secrets/llama/api-key
-            - --n-gpu-layers
-            - auto
-            - --fit
-            - "on"
-            - --fit-target
-            - "4096"
-            - --ctx-size
-            - "65536"
-            - --parallel
-            - "1"
-            - --threads
-            - "16"
-            - --threads-batch
-            - "24"
-            - --flash-attn
-            - auto
-            - --cache-type-k
-            - f16
-            - --cache-type-v
-            - f16
-            - --no-kv-offload
-            - --load-mode
-            - mmap
-            - --cont-batching
-            - --cache-prompt
-            - --cache-ram
-            - "0"
-            - --ctx-checkpoints
-            - "4"
-            - --jinja
-            - --metrics
             - --no-ui
+            - --slots
           env:
             - name: HOME
               value: /tmp
@@ -96,25 +75,25 @@ spec:
               containerPort: 8080
           resources:
             requests:
-              cpu: "12"
-              memory: 32Gi
+              cpu: "8"
+              memory: 16Gi
             limits:
               cpu: "24"
-              memory: 44Gi
+              memory: 32Gi
               nvidia.com/gpu: "1"
           startupProbe:
             httpGet:
-              path: /health
+              path: /health?model=qwen3.5-9b&autoload=false
               port: http
             periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 240
+            timeoutSeconds: 3
+            failureThreshold: 180
           readinessProbe:
             httpGet:
               path: /health
               port: http
             periodSeconds: 5
-            timeoutSeconds: 2
+            timeoutSeconds: 3
             failureThreshold: 3
           livenessProbe:
             httpGet:
@@ -130,8 +109,14 @@ spec:
               drop:
                 - ALL
           volumeMounts:
-            - name: models
-              mountPath: /models
+            - name: daily-model
+              mountPath: /models/daily
+              readOnly: true
+            - name: large-model
+              mountPath: /models/large
+              readOnly: true
+            - name: config
+              mountPath: /config
               readOnly: true
             - name: tmp
               mountPath: /tmp
@@ -139,9 +124,15 @@ spec:
               mountPath: /run/secrets/llama
               readOnly: true
       volumes:
-        - name: models
+        - name: daily-model
           persistentVolumeClaim:
-            claimName: llama-models-q6
+            claimName: llama-models-daily
+        - name: large-model
+          persistentVolumeClaim:
+            claimName: llama-models-q3
+        - name: config
+          configMap:
+            name: llama-router-config
         - name: tmp
           emptyDir: {}
         - name: auth

@@ -1,15 +1,24 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: download-qwen36-27b-ud-q6-k-xl
+  name: download-qwen36-27b-q3-k-s
   namespace: llms
+  labels:
+    app: llama-model-download-q3
+    model.huggingface.co/source: hub
+    model.huggingface.co/base-model-official: "true"
+  annotations:
+    model.huggingface.co/repository: unsloth/Qwen3.6-27B-GGUF
+    model.huggingface.co/base-model: Qwen/Qwen3.6-27B
+    model.huggingface.co/revision: 82d411acf4a06cfb8d9b073a5211bf410bfc29bf
+    model.huggingface.co/tags: base_model:Qwen/Qwen3.6-27B,base_model:quantized:Qwen/Qwen3.6-27B
 spec:
   backoffLimit: 3
-  activeDeadlineSeconds: 21600
+  activeDeadlineSeconds: 14400
   template:
     metadata:
       labels:
-        app: llama-model-download-q6
+        app: llama-model-download-q3
     spec:
       automountServiceAccountToken: false
       restartPolicy: Never
@@ -38,11 +47,11 @@ spec:
             - |
               set -eu
 
-              target="/models/Qwen3.6-27B-UD-Q6_K_XL.gguf"
+              target="/models/Qwen3.6-27B-Q3_K_S.gguf"
               partial="${target}.partial"
-              expected_size="25636485344"
-              expected_sha="8746881d40f280b1b6b858c656a347c754ed3d9cc8d2e1ad46b3635b87f611f8"
-              url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-UD-Q6_K_XL.gguf?download=true"
+              expected_size="12358727904"
+              expected_sha="4afb4abcf0207a484b0d7e92c0421b74e8ce1c7a7250bb9d824b79288da68f20"
+              url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-Q3_K_S.gguf?download=true"
 
               if [ -f "$target" ] &&
                  [ "$(wc -c < "$target" | tr -d ' ')" = "$expected_size" ] &&
@@ -51,8 +60,8 @@ spec:
                 exit 0
               fi
 
-              # A corrupt target has no rollback value and retaining it would
-              # require space for two complete 25.6 GB files during recovery.
+              # A corrupt target has no rollback value. Remove it before
+              # downloading so recovery never needs two complete model files.
               rm -f "$target" "$partial"
               curl --fail --location --retry 5 --retry-all-errors \
                 --connect-timeout 30 --output "$partial" "$url"
@@ -84,4 +93,4 @@ spec:
       volumes:
         - name: models
           persistentVolumeClaim:
-            claimName: llama-models-q6
+            claimName: llama-models-q3

@@ -1,0 +1,68 @@
+# model-panel RBAC — D12/D13: own least-privilege ServiceAccount, separate
+# from codex-shim's (see kubernetes/codex-shim/rbac.yaml). No `secrets`
+# verb at all (D10): the app bearer is mounted via secretKeyRef in
+# deployment.yaml, never read back through the K8s API.
+#
+# Kubernetes forbids `resourceNames` combined with `list`/`watch`, so reads
+# are namespace-wide (list/watch, no resourceNames) while mutations are
+# scoped to only the named deployments/ConfigMaps/ScaledObjects the handoff
+# sequences actually touch (design.md RBAC table).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: model-panel
+  namespace: llms
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: model-panel
+  namespace: llms
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["patch", "update"]
+    resourceNames:
+      - llama-router
+      - vllm
+      - vllm-big-model
+      - vllm-small-model
+      - llama-server
+      - llama-server-q3
+      - llama-server-q6
+      - litellm
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["patch", "update"]
+    resourceNames:
+      - litellm-config
+      - model-panel-state
+  - apiGroups: ["keda.sh"]
+    resources: ["scaledobjects"]
+    verbs: ["get", "list", "watch", "patch"]
+    resourceNames:
+      - vllm-big-model
+      - vllm-small-model
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: model-panel
+  namespace: llms
+subjects:
+  - kind: ServiceAccount
+    name: model-panel
+    namespace: llms
+roleRef:
+  kind: Role
+  name: model-panel
+  apiGroup: rbac.authorization.k8s.io

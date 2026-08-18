@@ -1,0 +1,11 @@
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: model-panel-mtls
+  namespace: llms
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    secretNames:
+      - model-panel-client-ca
+    clientAuthType: RequireAndVerifyClientCert

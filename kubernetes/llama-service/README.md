@@ -1,13 +1,56 @@
 # llama-service
 
-Recursos para servir `Qwen3.6-27B-IQ4_XS.gguf` dentro del namespace existente
-`llms` con el servidor OpenAI-compatible de llama.cpp. El modelo usa inferencia
+Recursos para servir modelos Qwen GGUF dentro del namespace existente `llms`
+con el servidor OpenAI-compatible de llama.cpp. Los modelos grandes usan inferencia
 hibrida: llama.cpp
 elige automaticamente cuantas capas caben en la RTX 4070 Ti SUPER y mantiene
 las restantes, junto con el KV cache inicial, en la RAM del host.
 
 El procedimiento completo, las decisiones de memoria y el rollback estan en
 `specs/005_llama_cpp_qwen36_hybrid.md`.
+
+## Ruta recomendada: panel web (`model-panel`)
+
+El handoff de GPU Local↔Cloud (liberar la RTX 4070 Ti SUPER para otro uso y
+recuperarla) tiene ahora una ruta primaria sin `kubectl` manual: el panel web
+`kubernetes/model-panel/`. Expuesto en la LAN detras de Traefik + mTLS + bearer
+(mismo patron que `kubernetes/engram/`), muestra el modo actual (Local/Cloud),
+el estado de la sesion Codex y permite:
+
+- Alternar Local ↔ Cloud con una accion (drena, pausa KEDA, escala a cero,
+  confirma GPU libre, reescribe el alias `qwen3` de LiteLLM y reinicia
+  LiteLLM; la vuelta a Local siempre sube el perfil `daily` por defecto).
+- Elegir el perfil local activo (`daily`/`large`) sin salir de Local,
+  reutilizando `llama-router` (ver seccion "Router diario/grande" mas abajo).
+
+Detalles completos: `specs/012_gpu_handoff_web_panel.md` (spec numerada de
+este cambio) y los artefactos OpenSpec en
+`openspec/changes/gpu-handoff-web-panel/` (`proposal.md`, `design.md`,
+`specs/`, `tasks.md`).
+
+**El runbook manual de esta seccion ("Secuencia resumida" y "Volver a
+vLLM") sigue vigente como fallback** — usarlo si el panel no esta
+desplegado, esta en un estado degradado, o para depurar paso a paso.
+`switch-model.sh` (router diario/grande) tampoco cambia: sigue siendo la
+ruta directa para alternar `daily`/`large` desde la CLI, y el panel la
+complementa sin reemplazarla.
+
+### Aprovisionamiento de la sesion Codex del shim (fuera de banda)
+
+El modo Cloud del panel depende de `kubernetes/codex-shim/`, que posee **su
+propia** sesion OAuth de Codex/ChatGPT, separada de la de Hermes (D16 del
+`design.md`): el refresh token es de un solo uso y rota en el servidor, asi
+que compartir un mismo par de tokens entre dos refrescadores independientes
+haria que uno cierre la sesion del otro. Por eso el shim necesita su propio
+`codex login`, hecho a mano una sola vez, nunca desde el panel (el login
+interactivo esta fuera de alcance por diseno).
+
+El procedimiento paso a paso esta en
+`kubernetes/codex-shim/scripts/bootstrap_login.md`: login dedicado con una
+herramienta distinta de `hermes auth`, verificacion de que la sesion de
+Hermes sigue viva, y creacion manual (nunca via manifiesto versionado) de
+los Secrets `codex-shim-auth` (par de tokens) y el Secret de bearer interno
+que consumen tanto `codex-shim` como la entrada `cloud` de LiteLLM.
 
 ## Fuentes fijadas
 
@@ -28,16 +71,44 @@ Unsloth declarada sobre ese modelo base.
 
 | Archivo | Proposito |
 | --- | --- |
+| `pvc-daily.yaml` | PVC de 12 GiB para Qwen3.5-9B Q6_K. |
+| `model-download-daily-job.yaml` | Descarga verificada del modelo diario. |
+| `router-config.yaml` | Presets 9B diario y 27B grande. |
+| `deployment-router.yaml` | Router con un solo modelo cargado a la vez. |
+| `service-router.yaml` | Service interno del router. |
+| `switch-model.sh` | Cambio controlado entre los perfiles diario y grande. |
 | `pvc.yaml` | PVC local RWO de 30 GiB para el GGUF. |
+| `pvc-q3.yaml` | PVC local RWO de 20 GiB para Q3_K_S. |
 | `pvc-q6.yaml` | PVC local RWO de 35 GiB para UD-Q6_K_XL. |
 | `model-download-job.yaml` | Descarga atomica y verifica tamano + SHA-256. |
+| `model-download-q3-job.yaml` | Descarga y verifica Q3_K_S; se aplica aparte. |
 | `model-download-q6-job.yaml` | Descarga y verifica UD-Q6_K_XL; se aplica aparte. |
 | `deployment.yaml` | `llama-server` CUDA con replicas cero por seguridad. |
+| `deployment-q3.yaml` | `llama-server-q3` con replicas cero. |
 | `deployment-q6.yaml` | `llama-server-q6` hibrido con replicas cero. |
 | `service.yaml` | Service interno `ClusterIP` en 8080. |
+| `service-q3.yaml` | Service interno para la variante Q3. |
 | `service-q6.yaml` | Service interno para la variante Q6. |
 | `networkpolicy.yaml` | Permite ingress desde LiteLLM cuando NetworkPolicy esta habilitado. |
 | `kustomization.yaml` | Aplica recursos permanentes; no incluye el Job. |
+
+## Router diario/grande
+
+`llama-router` es la ruta recomendada. Precarga `Qwen3.5-9B-Q6_K` y carga
+`Qwen3.6-27B-Q3_K_S` cuando una solicitud selecciona el perfil grande. Usa
+`--models-max 1`, por lo que libera completamente un modelo antes de iniciar el
+otro. Las rutas LiteLLM son `qwen3.5-9b` y `qwen3.6-27b-q3`; el procedimiento y
+las limitaciones de concurrencia estan en `specs/008_qwen35_9b_daily_router.md`.
+
+Hermes genera trafico auxiliar y de background. No seleccionar el 27B mediante
+una peticion aislada mientras el gateway usa el 9B: ambos clientes provocarian
+desalojos alternados. Usar `./switch-model.sh large` y `./switch-model.sh daily`
+para detener el trafico, precargar un unico perfil y actualizar Hermes.
+
+Ambos GGUF provienen de Hugging Face y declaran los tags `base_model:Qwen/...`
+y `base_model:quantized:Qwen/...`. Qwen publica los modelos base oficiales, no
+estas cuantizaciones GGUF; los labels `base-model-official=true` se refieren al
+upstream Qwen y no al publicador de la cuantizacion.
 
 Los Secrets no se versionan. Antes de aplicar los Deployments debe existir:
 
@@ -45,6 +116,24 @@ Los Secrets no se versionan. Antes de aplicar los Deployments debe existir:
 
 `llama-server` monta `llama-api-key` desde ese mismo Secret. `master-key`
 autentica Hermes y los demas clientes de LiteLLM.
+
+## Variante Q3_K_S
+
+`Qwen3.6-27B-Q3_K_S.gguf` es la variante oficial cercana a IQ3 elegida para
+la prueba; el repositorio fijado no publica un archivo llamado `IQ3_M`.
+
+| Campo | Valor |
+| --- | --- |
+| Tamano | `12,358,727,904` bytes, `11.510 GiB` |
+| SHA-256 | `4afb4abcf0207a484b0d7e92c0421b74e8ce1c7a7250bb9d824b79288da68f20` |
+| Deployment | `llama-server-q3`, replicas cero |
+| Service | `llama-server-q3.llms.svc.cluster.local:8080` |
+| Modelo LiteLLM | `qwen3.6-27b-q3` |
+
+La prueba real offloadeo 65/65 capas, uso 11,254.73 MiB para el buffer CUDA del
+modelo y dejo aproximadamente 2,982 MiB de VRAM libres despues de un benchmark
+con 31.5K tokens de contexto. El procedimiento y los resultados completos estan
+en `specs/007_qwen36_27b_q3_k_s.md`.
 
 ## Variante UD-Q6_K_XL
 
@@ -104,6 +193,11 @@ kubectl -n llms logs job/download-qwen36-27b-iq4-xs
 VLLM_REPLICAS="$(kubectl -n llms get deployment/vllm -o jsonpath='{.spec.replicas}')"
 VLLM_BIG_REPLICAS="$(kubectl -n llms get deployment/vllm-big-model -o jsonpath='{.spec.replicas}')"
 VLLM_SMALL_REPLICAS="$(kubectl -n llms get deployment/vllm-small-model -o jsonpath='{.spec.replicas}')"
+HERMES_MODEL_DEFAULT="$(hermes config get model.default)"
+HERMES_CONTEXT_LENGTH="$(hermes config get model.context_length)"
+HERMES_MAX_TOKENS="$(hermes config get model.max_tokens)"
+HERMES_COMPRESSION_THRESHOLD="$(hermes config get compression.threshold_tokens)"
+HERMES_PROACTIVE_PRUNE="$(hermes config get compression.proactive_prune_tokens)"
 [[ "$VLLM_REPLICAS" =~ ^[0-9]+$ ]]
 [[ "$VLLM_BIG_REPLICAS" == 0 ]]
 [[ "$VLLM_SMALL_REPLICAS" == 0 ]]
@@ -146,6 +240,10 @@ kubectl -n llms get pods -o wide
 nvidia-smi
 
 # 5. Arrancar llama.cpp solo despues de confirmar que no queda otro pod GPU.
+test "$(kubectl -n llms get deployment/llama-server-q3 \
+  -o jsonpath='{.spec.replicas}')" = 0
+test "$(kubectl -n llms get deployment/llama-server-q6 \
+  -o jsonpath='{.spec.replicas}')" = 0
 kubectl -n llms scale deployment/llama-server --replicas=1
 kubectl -n llms rollout status deployment/llama-server --timeout=35m
 kubectl -n llms logs deployment/llama-server --tail=200
@@ -160,7 +258,10 @@ Antes de reiniciar Hermes, actualizar su secreto `OPENAI_API_KEY` para que
 coincida con `litellm-auth/master-key`. Un bearer token desconocido debe recibir
 un rechazo HTTP 4xx; no continuar si LiteLLM vuelve a emitir un fallback
 `INTERNAL_USER`. Despues de actualizar el key y los limites del modelo segun el
-spec completo, arrancar Hermes con `sudo systemctl start hermes-gateway.service`.
+spec completo, enlazar explicitamente el endpoint LAN con
+`hermes config set model.api_key '${env:OPENAI_API_KEY}'`. Hermes no reenvia
+automaticamente credenciales OpenAI a una IP privada. Finalmente, arrancar
+Hermes con `sudo systemctl start hermes-gateway.service`.
 
 El Service interno es:
 
@@ -184,18 +285,40 @@ set -euo pipefail
 test -n "${VLLM_REPLICAS:-}"
 test -n "${VLLM_BIG_REPLICAS:-}"
 test -n "${VLLM_SMALL_REPLICAS:-}"
+test -n "${HERMES_MODEL_DEFAULT:-}"
+test -n "${HERMES_CONTEXT_LENGTH:-}"
+test -n "${HERMES_MAX_TOKENS:-}"
+test -n "${HERMES_COMPRESSION_THRESHOLD:-}"
+test -n "${HERMES_PROACTIVE_PRUNE:-}"
 test "$(kubectl -n llms get scaledobject.keda.sh/vllm-big-model \
   -o jsonpath='{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}')" = 0
 test "$(kubectl -n llms get scaledobject.keda.sh/vllm-small-model \
   -o jsonpath='{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}')" = 0
+sudo systemctl stop hermes-gateway.service
 kubectl -n llms scale deployment/llama-server --replicas=0
-kubectl -n llms wait --for=delete pod -l app=llama-server --timeout=5m
+kubectl -n llms scale deployment/llama-server-q3 --replicas=0
+kubectl -n llms scale deployment/llama-server-q6 --replicas=0
+LLAMA_GPU_POD_NAMES="$(kubectl -n llms get pods \
+  -l 'app in (llama-server,llama-server-q3,llama-server-q6)' \
+  --field-selector='status.phase!=Succeeded,status.phase!=Failed' \
+  -o name)"
+if [[ -n "$LLAMA_GPU_POD_NAMES" ]]; then
+  mapfile -t LLAMA_GPU_PODS <<< "$LLAMA_GPU_POD_NAMES"
+  kubectl -n llms wait --for=delete "${LLAMA_GPU_PODS[@]}" --timeout=5m
+fi
 kubectl -n llms scale deployment/vllm --replicas="$VLLM_REPLICAS"
 kubectl -n llms scale deployment/vllm-big-model --replicas="$VLLM_BIG_REPLICAS"
 kubectl -n llms scale deployment/vllm-small-model --replicas="$VLLM_SMALL_REPLICAS"
 if (( VLLM_REPLICAS > 0 )); then
   kubectl -n llms rollout status deployment/vllm --timeout=20m
 fi
+hermes config set model.context_length "$HERMES_CONTEXT_LENGTH"
+hermes config set model.max_tokens "$HERMES_MAX_TOKENS"
+hermes config set compression.threshold_tokens "$HERMES_COMPRESSION_THRESHOLD"
+hermes config set compression.proactive_prune_tokens "$HERMES_PROACTIVE_PRUNE"
+hermes config set model.default "$HERMES_MODEL_DEFAULT"
+sudo systemctl start hermes-gateway.service
+hermes -z 'Responde exactamente: OK'
 test "$(kubectl -n llms get scaledobject.keda.sh/vllm-big-model \
   -o jsonpath='{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}')" = 0
 test "$(kubectl -n llms get scaledobject.keda.sh/vllm-small-model \

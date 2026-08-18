@@ -1,0 +1,42 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 32rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  color: #1a1a1a;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #eee;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  font-weight: 600;
+}
+
+.badge.ok { background: #d5f5df; }
+.badge.warn { background: #fff3cd; }
+.badge.bad { background: #f8d7da; }
+
+#profile-picker { margin: 1rem 0; }
+#profile-picker .note { font-size: 0.85rem; color: #666; }
+
+#toggle-btn {
+  font-size: 1.1rem;
+  padding: 0.6rem 1.2rem;
+  margin: 1rem 0;
+  cursor: pointer;
+}
+
+#toggle-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.error {
+  background: #f8d7da;
+  border: 1px solid #d9534f;
+  padding: 0.75rem;
+  border-radius: 0.4rem;
+  margin: 1rem 0;
+}
+
+#token-gate input { padding: 0.4rem; margin-right: 0.5rem; }

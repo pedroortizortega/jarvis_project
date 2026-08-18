@@ -1,0 +1,25 @@
+# This is the removable LAN access path. It is not the application service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: model-panel-lan
+  namespace: llms
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls.options: llms-model-panel-mtls@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - model-panel.lan
+      secretName: model-panel-server-tls
+  rules:
+    - host: model-panel.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: model-panel
+                port:
+                  name: http

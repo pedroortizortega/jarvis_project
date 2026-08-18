@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
+from kubernetes.client.exceptions import ApiException
 
 from app.clients.codex_shim import SwitchBlocked, assert_switch_to_cloud_allowed
 from app.handoff.drain import DEFAULT_DRAIN_TIMEOUT_SECONDS, wait_for_drain
@@ -122,6 +123,38 @@ def patch_litellm_alias_yaml(raw_config_yaml: str, *, litellm_params: Dict[str, 
     return yaml.safe_dump(doc, sort_keys=False)
 
 
+def classify_qwen3_alias_target(raw_config_yaml: str) -> Optional[str]:
+    """Read-only: classify what the live `qwen3` alias's `api_base` actually
+    points at right now — `"cloud"` (codex-shim), `"local"` (llama-router,
+    or anything else including the file's checked-in `vllm` baseline — see
+    below), or `None` if the entry/api_base can't be found at all.
+
+    Found live (Amendment 5): a routine `kubectl apply -f
+    litellm-config.yaml` reverts `qwen3` to the file's checked-in baseline
+    (historically `vllm.llms.svc.cluster.local`), silently undoing whatever
+    the panel last live-patched — Hermes then 500s in "cloud" mode with no
+    panel-visible signal, since the panel's own state ConfigMap was never
+    touched. Anything that isn't `codex-shim` is treated as "local" here
+    (not "unknown"): from Hermes's perspective, any non-cloud `api_base`
+    only serves real traffic correctly while `state.mode == "local"`, so
+    this must still register as drift when the state claims "cloud" —
+    returning `None` for the baseline case would silently skip that check.
+    """
+    try:
+        doc = yaml.safe_load(raw_config_yaml) or {}
+    except yaml.YAMLError:
+        return None
+    for entry in doc.get("model_list") or []:
+        if entry.get("model_name") == LITELLM_ALIAS_MODEL_NAME:
+            api_base = (entry.get("litellm_params") or {}).get("api_base") or ""
+            if "codex-shim" in api_base:
+                return "cloud"
+            if api_base:
+                return "local"
+            return None
+    return None
+
+
 def compute_patched_configmap_data(
     data: Dict[str, str], *, litellm_params: Dict[str, Any]
 ) -> Dict[str, str]:
@@ -141,13 +174,37 @@ def compute_patched_configmap_data(
 
 
 def _get_replicas(ctx: HandoffContext, name: str) -> int:
-    scale = ctx.apps_v1.read_namespaced_deployment_scale(name, ctx.namespace)
-    return int(scale.spec.replicas)
+    # GPU_DEPLOYMENTS is a defensive superset of everything that could ever
+    # hold the GPU; not every entry is necessarily deployed in every
+    # environment (e.g. `llama-server-q6` has manifests in the repo but is
+    # not applied to this cluster — confirmed live, design.md Amendment 4).
+    # A deployment that does not exist cannot be holding the GPU, so treat
+    # 404 the same as "already at 0", not as a fatal error that aborts the
+    # whole switch.
+    try:
+        scale = ctx.apps_v1.read_namespaced_deployment_scale(name, ctx.namespace)
+    except ApiException as exc:
+        if exc.status == 404:
+            return 0
+        raise
+    # `replicas: 0` is `omitempty` on the wire, so the Scale subresource
+    # comes back with `spec.replicas is None` rather than `0` for any
+    # deployment already scaled to zero — confirmed live against a real
+    # cluster (design.md Amendment 4). `int(None)` raises TypeError.
+    return int(scale.spec.replicas or 0)
 
 
 def _set_replicas(ctx: HandoffContext, name: str, replicas: int) -> None:
     body = {"spec": {"replicas": replicas}}
-    ctx.apps_v1.patch_namespaced_deployment_scale(name, ctx.namespace, body)
+    try:
+        ctx.apps_v1.patch_namespaced_deployment_scale(name, ctx.namespace, body)
+    except ApiException as exc:
+        if exc.status == 404:
+            # Nothing to scale — see _get_replicas' rationale above. Scaling
+            # a non-existent deployment "up" on the undo path is likewise a
+            # no-op: there was nothing running to restore.
+            return
+        raise
 
 
 def _deployment_available(ctx: HandoffContext, name: str) -> int:
@@ -423,6 +480,75 @@ def build_switch_profile_steps(
         _patch_litellm_config_step(target=target_preset),
         _restart_litellm_step(),
     ]
+
+
+def build_realign_alias_steps(ctx: HandoffContext, *, target: str) -> List[FunctionStep]:
+    """Found live (Amendment 5): a routine `kubectl apply -f
+    litellm-config.yaml` reverts the `qwen3` alias to the file's checked-in
+    baseline, silently undoing whatever mode the panel last enacted — no GPU
+    state changed, so no GPU/drain/KEDA step belongs here. This is a cheap,
+    idempotent, safe-to-repeat re-assertion of the ALREADY-recorded
+    `state.mode`, not a new decision."""
+    return [
+        _patch_litellm_config_step(target=target),
+        _restart_litellm_step(),
+    ]
+
+
+def realign_litellm_alias(ctx: HandoffContext) -> HandoffState:
+    """Self-heal alias drift (see `classify_qwen3_alias_target`): re-patch
+    the `qwen3` alias to match the already-recorded `state.mode` and restart
+    LiteLLM. Does not change `mode`/`profile`/`last_known_good` — the
+    recorded state was already correct; only the live ConfigMap had
+    drifted. Guarded the same way as any other mutating sequence: written
+    ahead as `transitioning`, `degraded` (with the failing reason) on
+    failure so it surfaces through the normal repair path."""
+    state_store = ctx.state_store
+    prior_state = state_store.read() if state_store is not None else HandoffState()
+    transition_id = str(uuid.uuid4())
+
+    if state_store is not None:
+        state_store.write(
+            HandoffState(
+                mode=prior_state.mode,
+                profile=prior_state.profile,
+                phase="transitioning",
+                target=prior_state.mode,
+                transition_id=transition_id,
+                last_known_good=prior_state.last_known_good,
+            )
+        )
+
+    runner = StepRunner(build_realign_alias_steps(ctx, target=prior_state.mode))
+    try:
+        runner.run(ctx)
+    except HandoffError as exc:
+        if state_store is not None:
+            state_store.write(
+                HandoffState(
+                    mode=prior_state.mode,
+                    profile=prior_state.profile,
+                    phase="degraded",
+                    target=prior_state.mode,
+                    transition_id=transition_id,
+                    error=f"alias realign failed: {exc}",
+                    last_known_good=prior_state.last_known_good,
+                )
+            )
+        raise
+
+    final_state = HandoffState(
+        mode=prior_state.mode,
+        profile=prior_state.profile,
+        phase="idle",
+        target=None,
+        transition_id=None,
+        error=None,
+        last_known_good=prior_state.last_known_good,
+    )
+    if state_store is not None:
+        state_store.write(final_state)
+    return final_state
 
 
 # ---------------------------------------------------------------------------

@@ -52,3 +52,31 @@ def test_reconcile_against_live_consistent_when_matching():
     state = HandoffState(mode="cloud", phase="idle")
     result = reconcile_against_live(state, router_replicas=0, gpu_pods_present=False)
     assert result == {"drift": False, "consistent": True}
+
+
+def test_reconcile_against_live_detects_alias_drift_even_when_gpu_matches():
+    """Regression test found live (Amendment 5): a routine `kubectl apply -f
+    litellm-config.yaml` reverts the qwen3 alias to its file baseline
+    without touching router replicas or GPU pods — router/GPU checks alone
+    stay consistent, so the alias check must be independent, not folded
+    into them."""
+    state = HandoffState(mode="cloud", phase="idle")
+    result = reconcile_against_live(
+        state, router_replicas=0, gpu_pods_present=False, qwen3_alias_target="local"
+    )
+    assert result["drift"] is True
+    assert result["alias_drift"] is True
+
+
+def test_reconcile_against_live_no_alias_drift_when_matching():
+    state = HandoffState(mode="cloud", phase="idle")
+    result = reconcile_against_live(
+        state, router_replicas=0, gpu_pods_present=False, qwen3_alias_target="cloud"
+    )
+    assert result == {"drift": False, "consistent": True, "alias_drift": False}
+
+
+def test_reconcile_against_live_skips_alias_check_when_target_omitted():
+    state = HandoffState(mode="cloud", phase="idle")
+    result = reconcile_against_live(state, router_replicas=0, gpu_pods_present=False)
+    assert "alias_drift" not in result

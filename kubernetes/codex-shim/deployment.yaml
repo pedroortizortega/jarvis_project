@@ -44,7 +44,7 @@ spec:
             - name: CODEX_SHIM_NAMESPACE
               value: llms
             - name: CODEX_CLOUD_MODEL
-              value: gpt-5.1-codex
+              value: gpt-5.6-sol
             - name: CODEX_SHIM_INTERNAL_KEY
               valueFrom:
                 secretKeyRef:

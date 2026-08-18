@@ -140,7 +140,7 @@ data:
       - model_name: cloud
         litellm_params:
           # codex-shim posee la sesion OAuth de Codex y traduce Chat Completions <-> Responses API (D15).
-          model: openai/gpt-5.1-codex
+          model: openai/gpt-5.6-sol
           api_base: http://codex-shim.llms.svc.cluster.local:8080/v1
           api_key: os.environ/CODEX_SHIM_KEY
     general_settings:
@@ -154,6 +154,14 @@ data:
         - litellm_callbacks.max_output_tokens_cap
     router_settings:
       enable_pre_call_checks: true
+      # Found live (Amendment 5): LiteLLM's own default is allowed_fails=1 /
+      # cooldown_time=60s — a single transient failure (e.g. right during a
+      # pod restart) blacklists the whole model group for a minute. Every
+      # alias here has exactly ONE deployment behind it (no redundancy), so
+      # that default turns any one-off blip into a real outage. Require 3
+      # consecutive failures before cooling down.
+      allowed_fails: 3
+      cooldown_time: 30
 ---
 apiVersion: apps/v1
 kind: Deployment

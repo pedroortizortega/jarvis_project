@@ -24,7 +24,12 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "deployments/scale"]
-    verbs: ["patch", "update"]
+    # `get` is required here too: the scale-to-zero/scale-up steps read
+    # current replicas via `read_namespaced_deployment_scale` (a GET on the
+    # `deployments/scale` subresource) before patching — confirmed live,
+    # `get`+`patch` on plain `deployments` alone is not sufficient because
+    # `deployments/scale` is a distinct subresource with its own RBAC check.
+    verbs: ["get", "patch", "update"]
     resourceNames:
       - llama-router
       - vllm

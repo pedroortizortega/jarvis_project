@@ -71,3 +71,46 @@ def test_request_translation_tool_role_becomes_function_call_output():
     assert len(function_calls) == 1
     assert function_calls[0]["call_id"] == "call_abc123"
     assert function_calls[0]["name"] == "get_weather"
+
+
+def test_fc_prefixed_tool_call_id_remaps_consistently_on_both_sides():
+    """Regression test found by /code-review (Amendment 5): when a tool
+    call's id is a Responses-shaped `fc_<x>` (no separate `call_id` field,
+    no `|`-embedded call_id — exactly what an assistant turn built from a
+    prior Responses `response.output_item.done` event looks like), the
+    assistant's `function_call.call_id` was remapped to `call_<x>`, but the
+    matching `tool` message's `function_call_output.call_id` fell through to
+    the raw `fc_<x>` unchanged — the two never matched, so the Responses API
+    could not associate the tool result with its call."""
+    from app.codex_translate import build_responses_request
+
+    messages = [
+        {"role": "user", "content": "what is the weather?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "fc_abc123",
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": '{"city": "SF"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "fc_abc123", "content": "72F sunny"},
+    ]
+
+    request = build_responses_request(model="gpt-5-codex", messages=messages, tools=None)
+
+    function_calls = [item for item in request["input"] if item.get("type") == "function_call"]
+    function_call_outputs = [
+        item for item in request["input"] if item.get("type") == "function_call_output"
+    ]
+    assert len(function_calls) == 1
+    assert len(function_call_outputs) == 1
+    assert function_calls[0]["call_id"] == function_call_outputs[0]["call_id"], (
+        "function_call.call_id and the matching function_call_output.call_id "
+        f"must match: {function_calls[0]['call_id']!r} != "
+        f"{function_call_outputs[0]['call_id']!r}"
+    )
+    assert function_calls[0]["call_id"] == "call_abc123"

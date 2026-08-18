@@ -74,7 +74,7 @@ def _default_litellm_params_for(target: str) -> Dict[str, Any]:
     adding the actual `cloud` model_list entry to the committed YAML."""
     if target == "cloud":
         return {
-            "model": f"openai/{os.environ.get('CODEX_CLOUD_MODEL', 'gpt-5.1-codex')}",
+            "model": f"openai/{os.environ.get('CODEX_CLOUD_MODEL', 'gpt-5.6-sol')}",
             "api_base": os.environ.get(
                 "CODEX_SHIM_BASE_URL", "http://codex-shim.llms.svc.cluster.local:8080/v1"
             ),
@@ -141,6 +141,33 @@ def create_app(
         c1, c2, c3 = clients_holder["clients"]
         return (core_v1 or c1, apps_v1 or c2, custom_objects_api or c3)
 
+    def _default_restart_litellm() -> None:
+        # Found missing during live cluster verification (Amendment 4):
+        # `restart_litellm` always defaulted to None, so the litellm-config
+        # ConfigMap got patched but LiteLLM never re-read it — the pod just
+        # kept serving its stale in-memory model_list. Restart it the same
+        # way `kubectl rollout restart` does: patch the pod template's
+        # annotations so the Deployment controller rolls a fresh pod.
+        import datetime
+
+        _, c2, _ = get_clients()
+        body = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "model-panel/restartedAt": datetime.datetime.now(
+                                datetime.timezone.utc
+                            ).isoformat()
+                        }
+                    }
+                }
+            }
+        }
+        c2.patch_namespaced_deployment(steps.LITELLM_DEPLOYMENT, namespace, body)
+
+    restart_litellm = restart_litellm or _default_restart_litellm
+
     store = state_store or StateStore(core_v1=core_v1)
     shim_client = codex_shim_client
     router = router_client
@@ -163,6 +190,15 @@ def create_app(
     app.state.router_client = router
     app.state.executor = ThreadPoolExecutor(max_workers=1)
     app.state.switch_lock = threading.Lock()
+    # Found live (Amendment 5): a routine `kubectl apply -f
+    # litellm-config.yaml` reverts the qwen3 alias without touching
+    # state/router/GPU, so drift can only be caught by reading the live
+    # ConfigMap. Cheap, but the alias re-patch + LiteLLM restart it can
+    # trigger is not — debounce self-heal attempts so a client polling
+    # /api/status every 2s can't retrigger a restart every 2s while
+    # something is genuinely, persistently broken.
+    app.state.last_alias_heal_attempt = 0.0
+    ALIAS_HEAL_MIN_INTERVAL_SECONDS = 30.0
 
     if _TEMPLATES_DIR.is_dir():
         templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -244,6 +280,34 @@ def create_app(
             raise
         return JSONResponse(status_code=202, content={"transition_id": transition_id})
 
+    def run_alias_realign_in_background() -> None:
+        try:
+            # build_ctx's `target` arg is unused by realign_litellm_alias —
+            # it re-reads state.mode itself to decide what to re-patch.
+            steps.realign_litellm_alias(build_ctx("realign"))
+        except Exception:
+            logger.exception("model-panel: realign_litellm_alias failed")
+        finally:
+            app.state.switch_lock.release()
+
+    def maybe_self_heal_alias_drift(state: HandoffState, qwen3_alias_target: Optional[str]) -> None:
+        if qwen3_alias_target is None or qwen3_alias_target == state.mode:
+            return
+        if state.phase != "idle":
+            return  # never interrupt or race a genuine in-flight/degraded switch
+        now = time.time()
+        if now - app.state.last_alias_heal_attempt < ALIAS_HEAL_MIN_INTERVAL_SECONDS:
+            return
+        acquired = app.state.switch_lock.acquire(blocking=False)
+        if not acquired:
+            return  # something else is mid-switch; leave it alone
+        app.state.last_alias_heal_attempt = now
+        try:
+            app.state.executor.submit(run_alias_realign_in_background)
+        except Exception:
+            app.state.switch_lock.release()
+            raise
+
     def run_profile_switch_in_background(profile: str) -> None:
         try:
             steps.switch_profile(profile, build_profile_ctx())
@@ -290,9 +354,21 @@ def create_app(
         except Exception:
             router_replicas = 0
 
+        qwen3_alias_target: Optional[str]
+        try:
+            cm = c1.read_namespaced_config_map(steps.LITELLM_CONFIGMAP_NAME, namespace)
+            raw_config = (getattr(cm, "data", None) or {}).get(steps.LITELLM_CONFIGMAP_DATA_KEY, "")
+            qwen3_alias_target = steps.classify_qwen3_alias_target(raw_config)
+        except Exception:
+            qwen3_alias_target = None  # unreadable ConfigMap: skip the alias check, don't false-positive
+
         drift_info = reconcile_against_live(
-            state, router_replicas=router_replicas, gpu_pods_present=gpu_pods_present
+            state,
+            router_replicas=router_replicas,
+            gpu_pods_present=gpu_pods_present,
+            qwen3_alias_target=qwen3_alias_target,
         )
+        maybe_self_heal_alias_drift(state, qwen3_alias_target)
 
         session: Optional[Dict[str, Any]]
         try:
@@ -311,6 +387,7 @@ def create_app(
                 "session": session,
                 "last_known_good": state.last_known_good,
                 "drift": drift_info["drift"],
+                "alias_drift": drift_info.get("alias_drift"),
             }
         )
 
@@ -360,6 +437,15 @@ def create_app(
             raise HTTPException(status_code=400, detail="no degraded switch to repair")
         if not state.target:
             raise HTTPException(status_code=400, detail="no target recorded for repair")
+        # Found by /code-review (Amendment 5): a degraded PROFILE switch
+        # (D18/D18a) writes state.target as "daily"/"large", not "cloud"/
+        # "local". Blindly calling start_switch(state.target) for a profile
+        # target reaches steps.switch_to(), which raises ValueError for an
+        # unrecognized target — caught by run_switch_in_background's bare
+        # except, logged, and swallowed, after the client already got a 202
+        # "accepted". Repair must dispatch to the matching switch kind.
+        if state.target in steps.PROFILE_MODEL_ALIASES:
+            return start_profile_switch(state.target)
         return start_switch(state.target)
 
     @app.get("/")

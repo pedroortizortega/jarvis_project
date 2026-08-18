@@ -58,6 +58,25 @@ def _split_responses_tool_id(raw_id: Any) -> tuple[Optional[str], Optional[str]]
     return value, None
 
 
+def _remap_fc_prefixed_response_item_id(response_item_id: Optional[str]) -> Optional[str]:
+    """`fc_<x>` (a Responses output-item id) -> `call_<x>` (the id the
+    Responses API actually expects on `function_call`/`function_call_output`
+    items). Shared by both the assistant `tool_calls[].id` fallback and the
+    `tool` message's `tool_call_id` fallback so the two sides of one tool
+    round-trip always land on the same id (found by /code-review, Amendment
+    5: the `tool`-role branch fell through to the raw `fc_`-prefixed id
+    verbatim instead of applying this same remap, so
+    `function_call_output.call_id` never matched the `function_call.call_id`
+    the assistant side had already remapped)."""
+    if (
+        isinstance(response_item_id, str)
+        and response_item_id.startswith("fc_")
+        and len(response_item_id) > len("fc_")
+    ):
+        return f"call_{response_item_id[len('fc_'):]}"
+    return None
+
+
 def _deterministic_call_id(fn_name: str, arguments: str, index: int = 0) -> str:
     seed = f"{fn_name}:{arguments}:{index}"
     digest = hashlib.sha256(seed.encode("utf-8", errors="replace")).hexdigest()[:12]
@@ -131,13 +150,8 @@ def _chat_messages_to_responses_input(
                         if not isinstance(call_id, str) or not call_id.strip():
                             call_id = embedded_call_id
                         if not isinstance(call_id, str) or not call_id.strip():
-                            if (
-                                isinstance(embedded_response_item_id, str)
-                                and embedded_response_item_id.startswith("fc_")
-                                and len(embedded_response_item_id) > len("fc_")
-                            ):
-                                call_id = f"call_{embedded_response_item_id[len('fc_'):]}"
-                            else:
+                            call_id = _remap_fc_prefixed_response_item_id(embedded_response_item_id)
+                            if not isinstance(call_id, str) or not call_id.strip():
                                 _raw_args = str(fn.get("arguments", "{}"))
                                 call_id = _deterministic_call_id(fn_name, _raw_args, len(items))
                         call_id = call_id.strip()
@@ -162,7 +176,9 @@ def _chat_messages_to_responses_input(
 
         if role == "tool":
             raw_tool_call_id = msg.get("tool_call_id")
-            call_id, _ = _split_responses_tool_id(raw_tool_call_id)
+            call_id, embedded_response_item_id = _split_responses_tool_id(raw_tool_call_id)
+            if not isinstance(call_id, str) or not call_id.strip():
+                call_id = _remap_fc_prefixed_response_item_id(embedded_response_item_id)
             if not isinstance(call_id, str) or not call_id.strip():
                 if isinstance(raw_tool_call_id, str) and raw_tool_call_id.strip():
                     call_id = raw_tool_call_id.strip()

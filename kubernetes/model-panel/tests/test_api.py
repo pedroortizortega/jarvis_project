@@ -273,3 +273,38 @@ def test_repair_retries_recorded_target_when_degraded(monkeypatch):
         resp = client.post("/api/repair", headers=auth_headers())
         app.state.executor.shutdown(wait=True)
     assert resp.status_code == 202
+
+
+def test_repair_dispatches_a_degraded_profile_target_to_profile_switch(monkeypatch):
+    """Regression test found by /code-review (Amendment 5): a degraded
+    PROFILE switch (D18/D18a) writes state.target as "daily"/"large", not
+    "cloud"/"local". Repair must route it through switch_profile(), not
+    steps.switch_to() (which raises ValueError for an unrecognized target,
+    silently swallowed by run_switch_in_background's bare except after the
+    client already got a 202)."""
+    import app.main as main_mod
+
+    calls: list[tuple[str, Any]] = []
+
+    def fake_switch_profile(profile: str, ctx: Any) -> None:
+        calls.append(("switch_profile", profile))
+
+    def fake_switch_to(target: str, ctx: Any) -> None:
+        calls.append(("switch_to", target))
+        raise AssertionError("repair must not route a profile target through switch_to")
+
+    monkeypatch.setattr(main_mod.steps, "switch_profile", fake_switch_profile)
+    monkeypatch.setattr(main_mod.steps, "switch_to", fake_switch_to)
+
+    app, *_ = build_app(
+        initial_state=HandoffState(
+            mode="local", profile="daily", phase="degraded", target="large", error="boom"
+        ),
+        monkeypatch=monkeypatch,
+    )
+    with TestClient(app) as client:
+        resp = client.post("/api/repair", headers=auth_headers())
+        app.state.executor.shutdown(wait=True)
+
+    assert resp.status_code == 202
+    assert calls == [("switch_profile", "large")], calls

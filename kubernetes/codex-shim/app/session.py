@@ -43,6 +43,19 @@ class SessionStatus:
     reason: Optional[str]
 
 
+#: Found during live cluster verification (Amendment 5): model-panel polls
+#: `GET /api/status` every 2s, which calls `/internal/session` ->
+#: `ensure_fresh()`. Once the cached token enters the skew window, every
+#: single poll re-attempted a live OAuth refresh; if that refresh failed
+#: (rate-limited, network blip) without advancing `expires_at`, the very
+#: next 2s poll retried again, indefinitely — pure monitoring traffic
+#: hammering the token endpoint. This bounds proactive retry attempts to
+#: once per interval; it does not affect the reactive 401 single-flight
+#: path (`handle_401_and_retry`), which stays driven by real request
+#: traffic, not passive polling.
+MIN_PROACTIVE_REFRESH_RETRY_INTERVAL_SECONDS = 30
+
+
 class SessionManager:
     """Owns the Codex OAuth session lifecycle for one credential (D14)."""
 
@@ -53,11 +66,13 @@ class SessionManager:
         refresh_fn: Callable[..., Any] = refresh_codex_oauth_pure,
         skew_seconds: int = CODEX_ACCESS_TOKEN_REFRESH_SKEW_SECONDS,
         clock: Callable[[], float] = time.time,
+        min_retry_interval_seconds: int = MIN_PROACTIVE_REFRESH_RETRY_INTERVAL_SECONDS,
     ) -> None:
         self._store = store
         self._refresh_fn = refresh_fn
         self._skew = skew_seconds
         self._clock = clock
+        self._min_retry_interval = min_retry_interval_seconds
         self._lock = asyncio.Lock()
         self._state: SessionState = "not_configured"
         self._last_error_code: Optional[str] = None
@@ -65,6 +80,7 @@ class SessionManager:
         self._cached: Optional[TokenRecord] = None
         self._refresh_call_count = 0
         self._refresh_generation = 0
+        self._last_failed_attempt_at: Optional[float] = None
 
     # -- read helpers ---------------------------------------------------
 
@@ -115,12 +131,14 @@ class SessionManager:
             )
         except AuthError as exc:
             self._classify_error(exc)
+            self._last_failed_attempt_at = self._clock()
             raise
         new_record = self._store.write(tokens)
         self._cached = new_record
         self._state = "valid"
         self._last_error_code = None
         self._reason = None
+        self._last_failed_attempt_at = None
         self._refresh_generation += 1
 
     async def refresh(self) -> None:
@@ -139,6 +157,17 @@ class SessionManager:
 
         now = self._clock()
         if record.expires_at is not None and now >= (record.expires_at - self._skew):
+            if (
+                self._last_failed_attempt_at is not None
+                and (now - self._last_failed_attempt_at) < self._min_retry_interval
+            ):
+                # A recent proactive attempt already failed and the token is
+                # still in the skew window — skip hitting the token endpoint
+                # again; the last classified state (rate_limited/
+                # expired_needs_relogin/refresh_failed) is still accurate
+                # and callers (including the status endpoint) should keep
+                # reporting it rather than retry every poll.
+                return record.access_token if record else ""
             await self.refresh()
             record = self._cached
         else:

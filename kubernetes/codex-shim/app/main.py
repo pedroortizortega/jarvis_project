@@ -12,6 +12,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.codex_auth import AuthError
 from app.proxy import build_router
 from app.session import SessionManager
 from app.store import SecretNotFound, TokenStore
@@ -37,10 +38,17 @@ def create_app(
 
     @app.get("/internal/session")
     async def internal_session() -> JSONResponse:
+        # `ensure_fresh()` — not a bare cache load — is what actually
+        # transitions `_state` to "valid" (or triggers+classifies a refresh
+        # when within the skew window). A passive status poll must reflect
+        # the real session state on its own, without depending on some
+        # unrelated proxy request having run ensure_fresh()/refresh() first.
         try:
-            manager._load_cached()  # populate cache so status() reports expires_at/last_refresh
+            await manager.ensure_fresh()
         except SecretNotFound:
             pass
+        except AuthError:
+            pass  # state/reason already classified by the session manager
         status = manager.status()
         # Explicitly never include token material — status() already only
         # returns state/expires_at/last_refresh/last_error_code/reason, but

@@ -92,13 +92,26 @@ class StateStore:
 
 
 def reconcile_against_live(
-    state: HandoffState, *, router_replicas: int, gpu_pods_present: bool
+    state: HandoffState,
+    *,
+    router_replicas: int,
+    gpu_pods_present: bool,
+    qwen3_alias_target: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Compare the state ConfigMap's claim against live cluster signals.
 
     Read-only: never mutates `state` or the cluster. While a switch is
     `transitioning`, drift is not meaningful (the cluster is expected to be
     mid-flight) so this always reports consistent in that phase.
+
+    `qwen3_alias_target` is the live `qwen3` LiteLLM alias's classified
+    target ("cloud"/"local"/None for unrecognized), independent of GPU/router
+    state — found live (Amendment 5): a routine `kubectl apply -f
+    litellm-config.yaml` silently reverts the alias to the file's checked-in
+    baseline, which is invisible to the router-replicas/GPU-pods checks
+    alone (those stay consistent; only the alias — what Hermes actually
+    calls — drifts). Omit the argument (default None) to skip this check,
+    e.g. for callers that can't cheaply read the ConfigMap.
     """
     if state.phase == "transitioning":
         return {"drift": False, "consistent": True}
@@ -107,5 +120,9 @@ def reconcile_against_live(
     router_matches = (router_replicas >= 1) == expected_router_up
     expected_gpu_pods = state.mode == "local"
     gpu_matches = gpu_pods_present == expected_gpu_pods
-    consistent = router_matches and gpu_matches
-    return {"drift": not consistent, "consistent": consistent}
+    alias_matches = qwen3_alias_target is None or qwen3_alias_target == state.mode
+    consistent = router_matches and gpu_matches and alias_matches
+    result: Dict[str, Any] = {"drift": not consistent, "consistent": consistent}
+    if qwen3_alias_target is not None:
+        result["alias_drift"] = not alias_matches
+    return result

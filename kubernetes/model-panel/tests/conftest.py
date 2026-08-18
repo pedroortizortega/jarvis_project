@@ -83,6 +83,7 @@ class FakeAppsV1Api:
         self._available: Dict[str, int] = dict(available or {})
         self.calls: List[str] = []
         self.scale_calls: List[Dict[str, Any]] = []
+        self.patch_deployment_calls: List[Dict[str, Any]] = []
 
     def read_namespaced_deployment_scale(self, name: str, namespace: str) -> SimpleNamespace:
         self.calls.append("read_namespaced_deployment_scale")
@@ -106,6 +107,11 @@ class FakeAppsV1Api:
     def read_namespaced_deployment(self, name: str, namespace: str) -> SimpleNamespace:
         self.calls.append("read_namespaced_deployment")
         return SimpleNamespace(status=SimpleNamespace(available_replicas=self._available.get(name, 0)))
+
+    def patch_namespaced_deployment(self, name: str, namespace: str, body: Dict[str, Any]) -> SimpleNamespace:
+        self.calls.append("patch_namespaced_deployment")
+        self.patch_deployment_calls.append({"name": name, "namespace": namespace, "body": body})
+        return SimpleNamespace()
 
 
 class FakeCustomObjectsApi:

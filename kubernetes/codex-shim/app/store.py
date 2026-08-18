@@ -125,6 +125,31 @@ class TokenStore:
         last_refresh = tokens.get("last_refresh")
         expires_at = parse_jwt_exp(access_token)
 
+        core_v1 = self._client()
+
+        if expires_at is None:
+            # Found by /code-review (Amendment 5): if the new access token's
+            # `exp` fails to parse, `_KEY_EXPIRES_AT` used to be silently
+            # OMITTED from the patch (leaving the Secret's old value in
+            # place) while the returned in-memory TokenRecord.expires_at was
+            # None. ensure_fresh() treats `expires_at is None` as
+            # never-expiring, so the shim silently stopped proactively
+            # refreshing this credential forever, relying solely on the
+            # reactive 401 path. Keep the Secret and the in-memory record
+            # consistent instead: fall back to whatever expires_at is
+            # already persisted rather than losing it.
+            try:
+                previous = self.read()
+                expires_at = previous.expires_at
+            except SecretNotFound:
+                expires_at = None
+            if expires_at is None:
+                logger.warning(
+                    "codex-shim store: new access token's exp claim did not parse "
+                    "and no previous expires_at was available; proactive refresh "
+                    "scheduling is degraded until the next reactive 401"
+                )
+
         body_data = {
             _KEY_ACCESS_TOKEN: access_token,
             _KEY_REFRESH_TOKEN: refresh_token,
@@ -134,7 +159,6 @@ class TokenStore:
         if expires_at is not None:
             body_data[_KEY_EXPIRES_AT] = str(expires_at)
 
-        core_v1 = self._client()
         patch_body = {"data": self._encode_data(body_data)}
         core_v1.patch_namespaced_secret(SECRET_NAME, SECRET_NAMESPACE, patch_body)
 

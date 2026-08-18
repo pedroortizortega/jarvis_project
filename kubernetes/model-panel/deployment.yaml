@@ -46,7 +46,7 @@ spec:
             - name: CODEX_SHIM_BASE_URL
               value: http://codex-shim.llms.svc.cluster.local:8080/v1
             - name: CODEX_CLOUD_MODEL
-              value: gpt-5.1-codex
+              value: gpt-5.6-sol
             - name: LLAMA_ROUTER_BASE_URL
               value: http://llama-router.llms.svc.cluster.local:8080/v1
             - name: MODEL_PANEL_AUTH_TOKEN

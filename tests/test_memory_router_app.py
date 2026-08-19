@@ -304,6 +304,97 @@ class RestAndMcpParityTests(unittest.TestCase):
         connection.close()
         self.assertEqual(200, response.status)
 
+    def _get(self, path, cn=None, bearer=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        headers = {}
+        if cn is not None:
+            headers[CLIENT_CN_HEADER] = cn
+        if bearer is not None:
+            headers["Authorization"] = f"Bearer {bearer}"
+        connection.request("GET", path, headers=headers)
+        response = connection.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        connection.close()
+        return response.status, payload
+
+    def test_agents_context_requires_authentication(self):
+        status, payload = self._get("/agents/hermes-gateway/context?role=jarvis")
+        self.assertEqual(401, status)
+        self.assertEqual("identity_rejected", payload["error"])
+
+    def test_agents_context_returns_content_for_permitted_namespace(self):
+        status, payload = self._get(
+            "/agents/hermes-gateway/context?role=jarvis",
+            cn="hermes-gateway",
+            bearer="token-hg",
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("/agents/hermes-gateway", payload["namespace"])
+        self.assertEqual(1, len(payload["items"]))
+        self.assertEqual("hit-a", payload["items"][0]["content"])
+
+    def test_projects_context_returns_content_for_permitted_namespace(self):
+        status, payload = self._get(
+            "/projects/lector-ine/context?role=coder",
+            cn="codex",
+            bearer="token-codex",
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("/projects/lector-ine", payload["namespace"])
+        self.assertEqual(1, len(payload["items"]))
+
+    def test_agents_context_denied_for_namespace_outside_permitted_role(self):
+        status, payload = self._get(
+            "/agents/hermes-gateway/context?role=coder",
+            cn="codex",
+            bearer="token-codex",
+        )
+        self.assertEqual(403, status)
+        self.assertEqual("authorization_denied", payload["error"])
+
+    def test_context_malformed_namespace_segment_rejected(self):
+        status, payload = self._get(
+            "/agents/../context?role=coder",
+            cn="codex",
+            bearer="token-codex",
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_namespace", payload["error"])
+
+
+class DispatcherContextTests(unittest.TestCase):
+    def test_context_goes_through_identity_permission_and_namespace_pipeline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeBackend(hits=["ctx-hit"])
+            dispatcher = make_dispatcher(backend, journal_dir=directory)
+            result = dispatcher.context(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/projects/lector-ine",
+            )
+        self.assertEqual(1, len(result["items"]))
+        self.assertEqual("ctx-hit", result["items"][0]["content"])
+
+    def test_context_denied_by_permissions_raises_dispatch_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeBackend()
+            dispatcher = make_dispatcher(backend, journal_dir=directory)
+            with self.assertRaises(DispatchError) as ctx:
+                dispatcher.context(
+                    cn="codex", bearer="token-codex", role="coder",
+                    namespace="/agents/hermes-gateway",
+                )
+        self.assertEqual(403, ctx.exception.status)
+
+    def test_context_unauthenticated_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeBackend()
+            dispatcher = make_dispatcher(backend, journal_dir=directory)
+            with self.assertRaises(DispatchError) as ctx:
+                dispatcher.context(
+                    cn=None, bearer=None, role="coder", namespace="/global",
+                )
+        self.assertEqual(401, ctx.exception.status)
+
 
 if __name__ == "__main__":
     unittest.main()

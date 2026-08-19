@@ -66,6 +66,11 @@ Chain strategy: pending
 - [x] 6.3 RED (extend `test_memory_router_app.py`): `/memory/reflect` returns `501`, no backend call; MCP and REST parity for store/search
 - [x] 6.4 GREEN `app.py`: reflect stub route + MCP stdio shim entry point
 - [x] 6.5 Modify `pyproject.toml`: add `memory_router.backends` entry-point group; console scripts for REST service and `memory-router-mcp`
+- [x] 6.6 Add unauthenticated `GET /healthz` probe endpoint (Kubernetes liveness/readiness), never touches identity/permissions/backends
+- [x] 6.7 RED (extend `test_memory_router_app.py`): `GET /agents/{name}/context` and `GET /projects/{name}/context` — unauthenticated request rejected (401), authorized request for a permitted namespace returns content (200), request for a namespace outside the caller's permitted role is denied (403), malformed/unsafe namespace segment rejected (400); RED (extend `test_memory_router_app.py::DispatcherContextTests`) for the same pipeline at the `Dispatcher` level
+- [x] 6.8 GREEN `app.py`: `Dispatcher.context()` (identity -> namespace -> permission "search" verb -> registry, same pipeline as `search`, no hierarchical fallback) + `do_GET` routes for `/agents/{name}/context` and `/projects/{name}/context`
+- [x] 6.9 RED (extend `tests/test_memory_router_engram_adapter.py`): `EngramBackend.search()` must call `mem_get_observation` per result with an `id` (full content, not truncated preview), in sequence after `mem_search`, and must skip the follow-up call when a result has no `id`
+- [x] 6.10 GREEN `backends/engram.py`: `EngramBackend.search()` follows up `mem_search` with `mem_get_observation` per result to populate full content
 
 ## Phase 7: Deployment manifests
 
@@ -75,6 +80,7 @@ Chain strategy: pending
 - [x] 7.4 Create `kubernetes/mcps/memory-router-pvc.yaml`: journal storage
 - [x] 7.5 Create `kubernetes/mcps/memory-router-ingress.yaml` + `memory-router-tlsoption.yaml`: Traefik mTLS, mirroring existing `mcps` tenants
 - [x] 7.6 Note in manifest PR description: cluster apply blocked on Engram Cloud manifest-ownership prerequisite (design.md Open Questions) — see the header comment repeated in all 6 files in this phase; **do not `kubectl apply` any of these until that prerequisite is resolved**.
+- [x] 7.7 Correct `memory-router-configmap.yaml`'s `identity-roles.yaml` comment (was falsely claiming PyYAML loading; the map is actually hardcoded in `permissions.py`/`app.py::_load_role_map_from_env()`) and add a matching design.md Open Question noting the PyYAML-ConfigMap wiring is deferred
 
 ## Phase 8: Spec companion
 

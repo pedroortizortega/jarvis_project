@@ -1,7 +1,9 @@
 import json
 import os
+import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -160,6 +162,39 @@ class Dispatcher:
 
         return {"hits": hits, "unavailable": unavailable}
 
+    def context(self, *, cn, bearer, role, namespace) -> dict:
+        """Read-oriented context summary for a single `/agents/{name}` or
+        `/projects/{name}` namespace. Goes through the exact same
+        identity -> permission -> namespace pipeline as store/search (never
+        bypassed), authorizing the "search" verb since this is read-only.
+        Unlike `search`, this does not walk the hierarchical fallback chain
+        — it is scoped strictly to the requested namespace.
+        """
+        identity = self._authenticate(cn, bearer)
+        namespace = self._validate_namespace(namespace)
+        self._authorize(role=role, identity_name=identity.name, namespace=namespace, verb="search")
+
+        req = SearchRequest(namespace=namespace, role=role, query="")
+        items: list[dict] = []
+        unavailable: list[dict] = []
+        for backend in self._registry.backends_for(verb="search", namespace=namespace):
+            try:
+                result = backend.search(req)
+            except BackendUnavailableError as exc:
+                unavailable.append({"backend": exc.backend, "reason": exc.reason})
+                continue
+            items.extend(
+                {
+                    "namespace": hit.namespace,
+                    "backend": hit.backend,
+                    "content": hit.content,
+                    "score": hit.score,
+                }
+                for hit in result.hits
+            )
+
+        return {"namespace": namespace, "items": items, "unavailable": unavailable}
+
     def reflect(self, *, cn, bearer, role=None, namespace=None, query=None) -> dict:
         # Decision 1: placeholder in Phase 1. No logic, no backend call.
         self._authenticate(cn, bearer)
@@ -195,6 +230,13 @@ def _parse_search_body(body: dict) -> dict:
         "namespace": body.get("namespace"),
         "query": body.get("query", ""),
     }
+
+
+# Matches GET /agents/{name}/context and GET /projects/{name}/context (the
+# interfaces spec's dual MCP/REST surface). `{name}` is taken verbatim from
+# the path segment and re-validated by `validate_namespace` downstream — the
+# route match alone never authorizes anything.
+_CONTEXT_PATH_RE = re.compile(r"^/(?P<kind>agents|projects)/(?P<name>[^/]+)/context$")
 
 
 def make_handler(dispatcher: Dispatcher):
@@ -256,6 +298,20 @@ def make_handler(dispatcher: Dispatcher):
                 # never touches identity, permissions, or any backend.
                 self._respond(200, {"status": "ok"})
                 return
+
+            parsed = urllib.parse.urlsplit(self.path)
+            match = _CONTEXT_PATH_RE.match(parsed.path)
+            if match:
+                cn, bearer = self._identity_headers()
+                role = urllib.parse.parse_qs(parsed.query).get("role", [None])[0]
+                namespace = f"/{match.group('kind')}/{match.group('name')}"
+                try:
+                    result = dispatcher.context(cn=cn, bearer=bearer, role=role, namespace=namespace)
+                    self._respond(200, result)
+                except DispatchError as exc:
+                    self._respond_error(exc)
+                return
+
             self._respond(404, {"error": "not_found", "detail": self.path})
 
     return RouterRequestHandler

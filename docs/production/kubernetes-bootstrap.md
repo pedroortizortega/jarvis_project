@@ -57,7 +57,16 @@ graph TD
     click FV "#final-validation-checklist" "Final validation checklist section"
 ```
 
-Every node above is a link — click it to jump to the file/doc that implements that step (works in GitHub's rendered markdown and in editors whose Mermaid preview supports `click`, e.g. VS Code with a Mermaid preview extension).
+Every node above is a link to the file/doc that implements that step —
+**confirmed working in local renders and in editors whose Mermaid preview
+runs with a permissive security level (e.g. VS Code's Mermaid preview
+extensions). Confirmed NOT working on github.com**: GitHub's Content
+Security Policy blocks the navigation outright ("This content is blocked"),
+a long-standing, unresolved platform limitation affecting every repo, not
+something fixable from here — see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545).
+**On GitHub, use the table below instead** — those are plain markdown
+links and work everywhere.
 
 | Node | File(s) / command | Notes |
 |------|--------------------|-------|
@@ -265,6 +274,11 @@ graph TD
     click B7 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B7"
     click B8 "hermes-gateway-install.md" "hermes-gateway-install.md - RPi worker section (not implemented)"
 ```
+
+Same caveat as the diagram above: these node links are confirmed working
+locally and in VS Code's Mermaid preview, confirmed **not** working on
+github.com (GitHub's CSP blocks the navigation) — use the table below on
+GitHub.
 
 | Node | Spec 001 section | Notes |
 |------|-------------------|-------|

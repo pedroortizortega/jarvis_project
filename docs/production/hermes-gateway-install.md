@@ -79,6 +79,14 @@ graph TD
     click DISABLED "../../hermes-native/scripts/install-hermes.sh" "leaves unit disabled"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, use the table below instead.
+
 | Fase | What it does | Exact file(s) read/written |
 |---|---|---|
 | 0 | Preflight: rejects root, validates `uname -m`, resolves `github.com` via DNS, probes `${HERMES_LITELLM_URL%/v1}/health/readiness`, checks free space in `$SERVICE_HOME` | none (read-only checks) |
@@ -197,6 +205,10 @@ graph TD
     click NOGATEWAY "../../specs/004_hermes_native_clone_systemd.md" "Fase 10, Worker sin mensajeria ni cron"
     click VALIDATE "../../specs/004_hermes_native_clone_systemd.md" "Fase 11, worker validation"
 ```
+
+Same caveat as the diagram above: confirmed working locally and in VS
+Code's Mermaid preview, confirmed **not** working on github.com — use the
+table below on GitHub.
 
 | Diagram node | Intended behavior | Spec 004 citation |
 |---|---|---|

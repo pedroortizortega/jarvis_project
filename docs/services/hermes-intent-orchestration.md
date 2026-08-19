@@ -162,6 +162,16 @@ graph TD
     click DD "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "primary model answers"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, every function named in this diagram lives in one of two
+files: `runtime.py` (`pre_llm_call`, `llm_execution`) or `policy.py`
+(`RouterPolicy.decide`) — both linked throughout this doc's prose below.
+
 `confirmation_required` blocks delegation but is not a synthetic
 "unavailable" message like the other two fail-closed paths — it just falls
 through to the primary model the same way a low-confidence decision would;

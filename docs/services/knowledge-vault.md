@@ -113,6 +113,14 @@ graph LR
     click Mirror "../../hermes-native/knowledge-vault/systemd/knowledge-vault-mirror.service" "knowledge-vault-mirror.service"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, use the "The 5 systemd units" table below instead.
+
 Only `knowledge-vault-publisher.service` writes to the canonical vault — see
 [Safety model](#safety-model) for why that's enforced twice (file
 ownership/mode and systemd `ReadWritePaths=`/`InaccessiblePaths=`).

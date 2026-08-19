@@ -119,6 +119,14 @@ graph TD
     click Cooldown "../../kubernetes/proxy/litellm-config.yaml" "router_settings in litellm-config.yaml"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, use the table below instead.
+
 Every alias below is controlled by the same single file — **changing this
 routing is a one-file edit**:
 

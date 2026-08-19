@@ -333,6 +333,15 @@ graph TD
     click H "../../hermes-native/memory-router/src/memory_router/journal.py" "Journal.ack"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, the [link table](#architecture) above the sequence diagram
+already gives you the guaranteed-clickable path to these same files.
+
 **Implemented today** (green nodes above, tested by
 `tests/test_memory_router_journal.py`): `Journal.append`, `Journal.replay`,
 `Journal.ack` — the append/read/acknowledge primitives, each durable

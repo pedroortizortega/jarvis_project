@@ -1,0 +1,62 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+#
+# NOT YET APPLIED TO ANY CLUSTER. `kubectl apply` is blocked on resolving the
+# Engram Cloud manifest-ownership prerequisite (design.md "Open Questions" —
+# the `mcps` namespace's existing manifests are untracked with an
+# undocumented origin, per specs/011_engram_cloud_centralized.md §0).
+# This file is authored now so the deployment shape is reviewable; do not
+# apply it until that prerequisite is resolved.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: memory-router-config
+  namespace: mcps
+  labels:
+    app: memory-router
+data:
+  # Server-side identity -> permitted role(s) mapping (proposal decision 5 —
+  # never caller-asserted). Loaded by memory_router.app via PyYAML.
+  identity-roles.yaml: |
+    identities:
+      pedro-claude-code:
+        roles: [coder]
+      codex:
+        roles: [coder]
+      opencode:
+        roles: [coder, scientist]
+      hermes-gateway:
+        roles: [jarvis]
+
+  # The four fixed namespace roots (proposal decision 2). No other root is
+  # ever accepted by the router — enforced in src/memory_router/namespaces.py,
+  # this is documentation/config parity, not the source of truth.
+  namespace-roots.yaml: |
+    roots:
+      - /global
+      - /user/master
+      - /projects/{name}
+      - /agents/{name}
+
+  # Phase 1 role table (design.md "Auth & Permissions"). Mirrors
+  # src/memory_router/permissions.py; a change here without a matching code
+  # change has no effect — this is documentation for operators/reviewers.
+  role-table.yaml: |
+    roles:
+      coder:
+        global: [search]
+        user_master: []
+        projects: [store, search]
+        agents_self: [store, search]
+        agents_other: []
+      scientist:
+        global: [store, search]
+        user_master: [search]
+        projects: [search]
+        agents_self: [store, search]
+        agents_other: []
+      jarvis:
+        global: [store, search]
+        user_master: [store, search]
+        projects: [store, search]
+        agents_self: [store, search]
+        agents_other: [store, search]

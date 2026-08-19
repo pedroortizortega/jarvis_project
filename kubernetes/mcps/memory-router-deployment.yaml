@@ -1,0 +1,122 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
+# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-router
+  namespace: mcps
+  labels:
+    app: memory-router
+    mcp: memory-router
+spec:
+  # replicas: 1 + Recreate is a hard requirement, not a default: the
+  # durable journal is a single-writer append-only file on a PVC
+  # (design.md "Router statefulness" / "Queue mechanism"). Running more
+  # than one writer against the same journal file is unsafe.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: memory-router
+  template:
+    metadata:
+      labels:
+        app: memory-router
+        mcp: memory-router
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Explicit numeric UID/GID — spec 011 §4 documents the real bug this
+        # avoids: runAsNonRoot without a numeric runAsUser makes the kubelet
+        # reject the container ("cannot verify user is non-root").
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: memory-router
+          image: memory-router:0.1.0 # placeholder — no registry/build pipeline exists yet
+          imagePullPolicy: IfNotPresent
+          command: ["memory-router"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MEMORY_ROUTER_HOST
+              value: "0.0.0.0"
+            - name: MEMORY_ROUTER_PORT
+              value: "8080"
+            - name: MEMORY_ROUTER_JOURNAL_PATH
+              value: "/data/journal.ndjson"
+            - name: ENGRAM_CLOUD_SERVER
+              value: "http://engram-cloud.mcps.svc.cluster.local:8080"
+            - name: ENGRAM_CLOUD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: memory-router-engram-credentials
+                  key: ENGRAM_CLOUD_TOKEN
+            - name: MEMORY_ROUTER_BEARER_PEDRO_CLAUDE_CODE
+              valueFrom:
+                secretKeyRef:
+                  name: memory-router-client-bearers
+                  key: pedro-claude-code
+            - name: MEMORY_ROUTER_BEARER_CODEX
+              valueFrom:
+                secretKeyRef:
+                  name: memory-router-client-bearers
+                  key: codex
+            - name: MEMORY_ROUTER_BEARER_OPENCODE
+              valueFrom:
+                secretKeyRef:
+                  name: memory-router-client-bearers
+                  key: opencode
+            - name: MEMORY_ROUTER_BEARER_HERMES_GATEWAY
+              valueFrom:
+                secretKeyRef:
+                  name: memory-router-client-bearers
+                  key: hermes-gateway
+          volumeMounts:
+            - name: journal
+              mountPath: /data
+            - name: config
+              mountPath: /etc/memory-router
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+      volumes:
+        - name: journal
+          persistentVolumeClaim:
+            claimName: memory-router-journal
+        - name: config
+          configMap:
+            name: memory-router-config
+        - name: tmp
+          emptyDir: {}

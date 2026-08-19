@@ -251,6 +251,11 @@ def make_handler(dispatcher: Dispatcher):
                 self._respond_error(exc)
 
         def do_GET(self):  # noqa: N802 - stdlib method name
+            if self.path == "/healthz":
+                # Unauthenticated liveness/readiness probe for Kubernetes;
+                # never touches identity, permissions, or any backend.
+                self._respond(200, {"status": "ok"})
+                return
             self._respond(404, {"error": "not_found", "detail": self.path})
 
     return RouterRequestHandler

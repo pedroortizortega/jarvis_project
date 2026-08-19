@@ -296,6 +296,14 @@ class RestAndMcpParityTests(unittest.TestCase):
         self.assertEqual(501, result["status"])
         self.assertEqual("not_implemented", result["body"]["error"])
 
+    def test_healthz_requires_no_auth_for_kubernetes_probes(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        connection.request("GET", "/healthz")
+        response = connection.getresponse()
+        response.read()
+        connection.close()
+        self.assertEqual(200, response.status)
+
 
 if __name__ == "__main__":
     unittest.main()

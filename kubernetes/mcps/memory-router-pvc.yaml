@@ -1,0 +1,19 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
+# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: memory-router-journal
+  namespace: mcps
+  labels:
+    app: memory-router
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      # The durable NDJSON write journal only; degraded-store queue depth is
+      # expected to be small and short-lived (design.md "Queue mechanism").
+      storage: 1Gi

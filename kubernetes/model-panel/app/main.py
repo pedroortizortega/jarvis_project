@@ -39,6 +39,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.clients.codex_shim import CodexShimClient, SwitchBlocked, assert_switch_to_cloud_allowed
 from app.clients.llama_router import LlamaRouterClient
+from app.clients.metrics_client import MetricsClient
 from app.handoff import steps
 from app.handoff.gpu import gpu_free
 from app.handoff.state import HandoffState, StateStore, reconcile_against_live
@@ -125,6 +126,7 @@ def create_app(
     preload_probe: Optional[Callable[[str], None]] = None,
     restart_litellm: Optional[Callable[[], None]] = None,
     router_client: Any = None,
+    metrics_client: Any = None,
     namespace: str = NAMESPACE_DEFAULT,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
@@ -185,9 +187,23 @@ def create_app(
                 api_key=os.environ.get("LLAMA_API_KEY", ""),
             )
 
+    if metrics_client is None:
+        import httpx
+
+        metrics_client = MetricsClient(
+            http_client=httpx.Client(),
+            node_exporter_url=os.environ.get(
+                "NODE_EXPORTER_BASE_URL", "http://node-exporter.llms.svc.cluster.local:9100"
+            ),
+            gpu_exporter_url=os.environ.get(
+                "GPU_EXPORTER_BASE_URL", "http://nvidia-gpu-exporter.llms.svc.cluster.local:9835"
+            ),
+        )
+
     app.state.state_store = store
     app.state.codex_shim_client = shim_client
     app.state.router_client = router
+    app.state.metrics_client = metrics_client
     app.state.executor = ThreadPoolExecutor(max_workers=1)
     app.state.switch_lock = threading.Lock()
     # Found live (Amendment 5): a routine `kubectl apply -f
@@ -390,6 +406,11 @@ def create_app(
                 "alias_drift": drift_info.get("alias_drift"),
             }
         )
+
+    @app.get("/api/metrics")
+    def api_metrics(request: Request) -> JSONResponse:
+        _check_bearer(request)
+        return JSONResponse(metrics_client.fetch_metrics())
 
     @app.post("/api/switch")
     async def api_switch(request: Request) -> JSONResponse:

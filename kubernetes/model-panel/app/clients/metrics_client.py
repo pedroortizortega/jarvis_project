@@ -19,11 +19,16 @@ so tests never need a real network call.
 from __future__ import annotations
 
 import re
+import threading
 from typing import Any, Dict, Optional, Tuple
 
 DEFAULT_NODE_EXPORTER_BASE_URL = "http://node-exporter.llms.svc.cluster.local:9100"
 DEFAULT_GPU_EXPORTER_BASE_URL = "http://nvidia-gpu-exporter.llms.svc.cluster.local:9835"
-DEFAULT_METRICS_TIMEOUT_SECONDS = 5.0
+# Both exporters run on the same node as the panel, so anything slower than
+# this is already too slow to be useful for a 2-second-refresh gauge — and
+# a single `/api/metrics` request does two sequential scrapes, so a high
+# timeout here can block a threadpool worker for up to 2x its value.
+DEFAULT_METRICS_TIMEOUT_SECONDS = 1.5
 
 _CPU_METRIC_RE = re.compile(
     r'^node_cpu_seconds_total\{[^}]*mode="([^"]+)"[^}]*\}\s+([0-9.eE+\-]+)', re.MULTILINE
@@ -34,7 +39,12 @@ def parse_node_cpu_totals(text: str) -> Tuple[Optional[float], Optional[float]]:
     """Sums `node_cpu_seconds_total` across all cores into (idle, non_idle)
     buckets. Returns (None, None) if the metric isn't present at all
     (malformed/unexpected exporter output). Skips any lines with malformed
-    float values rather than raising."""
+    float values rather than raising.
+
+    Every mode other than "idle" — including "iowait" and "steal" — is
+    deliberately counted as non_idle/busy here. This differs from the
+    common convention of treating idle + iowait as not-busy; it's a
+    conscious choice for this simple gauge, not an oversight."""
     idle = 0.0
     non_idle = 0.0
     found = False
@@ -122,6 +132,10 @@ class MetricsClient:
         self._gpu_url = gpu_exporter_url.rstrip("/")
         self._timeout = timeout
         self._prev_cpu: Optional[Tuple[float, float]] = None
+        # `GET /api/metrics` is a sync route, so FastAPI runs it in a
+        # threadpool — concurrent requests (multiple tabs, overlapping
+        # polls) can race on the read-modify-write of `_prev_cpu` below.
+        self._lock = threading.Lock()
 
     def _fetch_text(self, base_url: str) -> Optional[str]:
         try:
@@ -140,11 +154,15 @@ class MetricsClient:
         if node_text is not None:
             idle, non_idle = parse_node_cpu_totals(node_text)
             if idle is not None and non_idle is not None:
-                if self._prev_cpu is not None:
-                    cpu_pct = compute_cpu_pct_from_deltas(
-                        self._prev_cpu[0], self._prev_cpu[1], idle, non_idle
-                    )
-                self._prev_cpu = (idle, non_idle)
+                # Only the shared-state read/compute/write needs the lock;
+                # the HTTP fetches above already happened outside it so
+                # concurrent requests don't serialize on network I/O.
+                with self._lock:
+                    if self._prev_cpu is not None:
+                        cpu_pct = compute_cpu_pct_from_deltas(
+                            self._prev_cpu[0], self._prev_cpu[1], idle, non_idle
+                        )
+                    self._prev_cpu = (idle, non_idle)
             mem_total = parse_single_gauge(node_text, "node_memory_MemTotal_bytes")
             mem_available = parse_single_gauge(node_text, "node_memory_MemAvailable_bytes")
             ram_pct = compute_ram_pct(mem_total, mem_available)

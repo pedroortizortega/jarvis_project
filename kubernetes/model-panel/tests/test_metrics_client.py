@@ -9,6 +9,8 @@ CPU is computed from a delta between two scrapes of the cumulative
 from __future__ import annotations
 
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -202,3 +204,55 @@ def test_metrics_client_gpu_down_does_not_affect_cpu_and_ram():
     result = client.fetch_metrics()
     assert result["ram_pct"] == pytest.approx(75.0)
     assert result["vram_pct"] is None
+
+
+class SlowFakeHttpClient(FakeHttpClient):
+    """Same as FakeHttpClient but sleeps inside .get() to widen the window
+    for a race on the read-modify-write of `_prev_cpu`, forcing real thread
+    interleaving instead of relying on GIL luck."""
+
+    def get(self, url: str, **kwargs: Any) -> FakeResponse:
+        time.sleep(0.01)
+        return super().get(url, **kwargs)
+
+
+def test_metrics_client_fetch_metrics_is_thread_safe_under_concurrent_polls():
+    # `GET /api/metrics` is a sync route, so FastAPI's threadpool can run
+    # overlapping `fetch_metrics()` calls concurrently (multiple browser
+    # tabs, overlapping polls). Without the lock around the `_prev_cpu`
+    # read-modify-write, this reliably raises or corrupts state under
+    # `-x --count`-style repeated runs; with the lock it must never raise
+    # and every non-None `cpu_pct` must be a plausible percentage.
+    http = SlowFakeHttpClient(
+        {
+            "http://node-exporter.llms.svc.cluster.local:9100/metrics": FakeResponse(NODE_EXPORTER_TEXT),
+            "http://nvidia-gpu-exporter.llms.svc.cluster.local:9835/metrics": FakeResponse(GPU_EXPORTER_TEXT),
+        }
+    )
+    client = MetricsClient(http_client=http)
+
+    results: list[Dict[str, Optional[float]]] = []
+    errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def worker() -> None:
+        try:
+            result = client.fetch_metrics()
+        except BaseException as exc:  # pragma: no cover - failure path
+            with lock:
+                errors.append(exc)
+            return
+        with lock:
+            results.append(result)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert len(results) == 8
+    for result in results:
+        assert result["cpu_pct"] is None or 0.0 <= result["cpu_pct"] <= 100.0
+        assert result["ram_pct"] == pytest.approx(75.0)

@@ -126,7 +126,7 @@ async function poll() {
   if (body) render(body);
 
   const metrics = await apiGet("/api/metrics");
-  if (metrics.body) renderMetrics(metrics.body);
+  if (metrics.status === 200 && metrics.body) renderMetrics(metrics.body);
 }
 
 async function onProfileChange() {

@@ -29,6 +29,11 @@ spec:
           effect: NoSchedule
       containers:
         - name: exporter
+          # UID/GID intentionally left as the image default: this image
+          # runs as its own non-root default user, but the exact UID
+          # isn't verified against a live pull of this image, so we
+          # don't pin `runAsNonRoot`/`runAsUser` here — doing so without
+          # a confirmed matching UID risks breaking pod startup.
           image: utkuozdemir/nvidia_gpu_exporter:1.14.0
           env:
             - name: HOME

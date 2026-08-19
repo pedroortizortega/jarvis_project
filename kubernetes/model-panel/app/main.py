@@ -39,7 +39,11 @@ from fastapi.templating import Jinja2Templates
 
 from app.clients.codex_shim import CodexShimClient, SwitchBlocked, assert_switch_to_cloud_allowed
 from app.clients.llama_router import LlamaRouterClient
-from app.clients.metrics_client import MetricsClient
+from app.clients.metrics_client import (
+    DEFAULT_GPU_EXPORTER_BASE_URL,
+    DEFAULT_NODE_EXPORTER_BASE_URL,
+    MetricsClient,
+)
 from app.handoff import steps
 from app.handoff.gpu import gpu_free
 from app.handoff.state import HandoffState, StateStore, reconcile_against_live
@@ -193,10 +197,10 @@ def create_app(
         metrics_client = MetricsClient(
             http_client=httpx.Client(),
             node_exporter_url=os.environ.get(
-                "NODE_EXPORTER_BASE_URL", "http://node-exporter.llms.svc.cluster.local:9100"
+                "NODE_EXPORTER_BASE_URL", DEFAULT_NODE_EXPORTER_BASE_URL
             ),
             gpu_exporter_url=os.environ.get(
-                "GPU_EXPORTER_BASE_URL", "http://nvidia-gpu-exporter.llms.svc.cluster.local:9835"
+                "GPU_EXPORTER_BASE_URL", DEFAULT_GPU_EXPORTER_BASE_URL
             ),
         )
 

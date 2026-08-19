@@ -18,6 +18,10 @@ spec:
         app.kubernetes.io/part-of: gpu-handoff-web-panel
     spec:
       automountServiceAccountToken: false
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: node-exporter
           image: quay.io/prometheus/node-exporter:v1.12.1

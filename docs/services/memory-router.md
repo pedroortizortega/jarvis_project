@@ -102,6 +102,19 @@ sequenceDiagram
     end
 ```
 
+Mermaid sequence diagrams don't support clickable nodes (only flowcharts
+do) — jump straight to the source instead:
+
+| Participant | File |
+|---|---|
+| `Dispatcher` (`_authenticate`, `_validate_namespace`, `_authorize`) | [`hermes-native/memory-router/src/memory_router/app.py`](../../hermes-native/memory-router/src/memory_router/app.py) |
+| `Identity` (`resolve_identity`) | [`hermes-native/memory-router/src/memory_router/identity.py`](../../hermes-native/memory-router/src/memory_router/identity.py) |
+| `Namespace` (`validate_namespace`) | [`hermes-native/memory-router/src/memory_router/namespaces.py`](../../hermes-native/memory-router/src/memory_router/namespaces.py) |
+| `Permissions` (`authorize`) | [`hermes-native/memory-router/src/memory_router/permissions.py`](../../hermes-native/memory-router/src/memory_router/permissions.py) |
+| `Registry` (`backends_for`) | [`hermes-native/memory-router/src/memory_router/registry.py`](../../hermes-native/memory-router/src/memory_router/registry.py) |
+| `Backend`, `Journal.append` | [`hermes-native/memory-router/src/memory_router/backends/engram.py`](../../hermes-native/memory-router/src/memory_router/backends/engram.py), [`journal.py`](../../hermes-native/memory-router/src/memory_router/journal.py) |
+| `Traefik` mTLS check | [`kubernetes/mcps/memory-router-tlsoption.yaml`](../../kubernetes/mcps/memory-router-tlsoption.yaml) |
+
 Implementation is pure-stdlib Python 3.11 (`http.server.ThreadingHTTPServer`)
 — four Tailnet clients don't justify a new ASGI stack. The router itself is
 stateless per request; only the write journal and Engram's own store are
@@ -309,6 +322,15 @@ graph TD
     style C fill:#d4edda,stroke:#28a745
     style F fill:#d4edda,stroke:#28a745
     style H fill:#d4edda,stroke:#28a745
+
+    click A "../../hermes-native/memory-router/src/memory_router/app.py" "Dispatcher.store"
+    click B "../../hermes-native/memory-router/src/memory_router/backends/engram.py" "EngramBackend.store"
+    click C "../../hermes-native/memory-router/src/memory_router/journal.py" "Journal.append"
+    click D "../../hermes-native/memory-router/src/memory_router/app.py" "202 pending response"
+    click E "../../hermes-native/memory-router/src/memory_router/journal.py" "no drainer here yet - see docstring"
+    click F "../../hermes-native/memory-router/src/memory_router/journal.py" "Journal.replay"
+    click G "../../hermes-native/memory-router/src/memory_router/backends/engram.py" "EngramBackend.store (retry)"
+    click H "../../hermes-native/memory-router/src/memory_router/journal.py" "Journal.ack"
 ```
 
 **Implemented today** (green nodes above, tested by

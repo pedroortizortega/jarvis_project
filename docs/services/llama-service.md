@@ -108,6 +108,15 @@ graph TD
 
     Lookup -.->|"router_settings:<br/>allowed_fails: 3, cooldown_time: 30<br/>(no replica redundancy per alias —<br/>3 consecutive fails before a 30s cooldown)"| Cooldown[" "]
     style Cooldown fill:none,stroke:none
+
+    click Req "../../kubernetes/proxy/litellm-config.yaml" "litellm-config.yaml"
+    click Lookup "../../kubernetes/proxy/litellm-config.yaml" "litellm-config.yaml model_list"
+    click Vllm "../../kubernetes/llms/vllm.yaml" "kubernetes/llms/vllm.yaml"
+    click Router "../../kubernetes/llama-service/deployment-router.yaml" "kubernetes/llama-service/deployment-router.yaml"
+    click Router2 "../../kubernetes/llama-service/deployment-router.yaml" "kubernetes/llama-service/deployment-router.yaml"
+    click Q6 "../../kubernetes/llama-service/deployment-q6.yaml" "kubernetes/llama-service/deployment-q6.yaml"
+    click Shim "../../kubernetes/codex-shim/deployment.yaml" "kubernetes/codex-shim/deployment.yaml"
+    click Cooldown "../../kubernetes/proxy/litellm-config.yaml" "router_settings in litellm-config.yaml"
 ```
 
 Every alias below is controlled by the same single file — **changing this

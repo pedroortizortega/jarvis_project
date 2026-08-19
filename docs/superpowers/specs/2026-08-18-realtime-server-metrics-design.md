@@ -45,18 +45,41 @@ panel's own container.
    directly and is the lighter, better-fitting choice for this hardware.
 3. **GPU exporter must not request the `nvidia.com/gpu` Kubernetes
    resource.** Doing so would consume the node's only GPU unit and starve
-   every other GPU workload the panel is meant to manage. Instead, the
-   exporter DaemonSet mounts the host's GPU character devices
-   (`/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm`) and the host's
-   NVIDIA driver binaries/libraries directly via `hostPath`, bypassing the
-   device-plugin resource accounting entirely. This is a deliberate,
-   narrowly-scoped exception to the hardening pattern used elsewhere in this
-   project — approved by the user for this pod only.
+   every other GPU workload the panel is meant to manage. This is a
+   deliberate, narrowly-scoped exception to the hardening pattern used
+   elsewhere in this project — approved by the user for this pod only.
+
+   > **Amendment (implementation, 2026-08-18):** the mechanism below —
+   > mounting host GPU character devices and driver libraries by hand via
+   > `hostPath` — was the design-time sketch but was **not** what got
+   > built. The implementation plan checked `nvidia_gpu_exporter`'s own
+   > upstream deployment docs and found the exporter's officially
+   > recommended way to get GPU visibility without reserving hardware:
+   > `runtimeClassName: nvidia` + `NVIDIA_VISIBLE_DEVICES=all` +
+   > `NVIDIA_DRIVER_CAPABILITIES=utility` (the cluster already has the
+   > `nvidia` RuntimeClass installed). This is less privileged than the
+   > hand-mounted `hostPath` approach below and needs no guessing at host
+   > library paths. **Do not "restore" the hostPath mounts described next
+   > — they were superseded, not missed.** See
+   > `kubernetes/model-panel/gpu-exporter.yaml` for what's actually
+   > deployed.
+
+   The original sketch, kept here for context only: the exporter DaemonSet
+   would mount the host's GPU character devices (`/dev/nvidia0`,
+   `/dev/nvidiactl`, `/dev/nvidia-uvm`) and the host's NVIDIA driver
+   binaries/libraries directly via `hostPath`, bypassing the device-plugin
+   resource accounting entirely.
 4. **`node-exporter` (`prom/node-exporter`) for CPU/RAM**, standard
-   DaemonSet with read-only `hostPath` mounts to `/proc`, `/sys`, `/`, and
-   `hostNetwork: true`. No special privileges beyond read-only host
-   filesystem access, which is the exporter's normal, well-understood
-   deployment shape.
+   DaemonSet with read-only `hostPath` mounts to `/proc`, `/sys`, `/`.
+   No special privileges beyond read-only host filesystem access, which is
+   the exporter's normal, well-understood deployment shape.
+
+   > **Amendment (implementation, 2026-08-18):** `hostNetwork: true`
+   > (in the original sketch below) was dropped — the panel reaches this
+   > exporter through its ClusterIP Service, so binding to the host's
+   > network namespace was never actually needed and only would have
+   > widened the privilege footprint for no benefit. See
+   > `kubernetes/model-panel/node-exporter.yaml`.
 5. **Panel backend adds one new endpoint, `GET /api/metrics`**, following
    the existing bearer-auth pattern of `GET /api/status`. It fetches both
    exporters' `/metrics` text over the cluster network (via each
@@ -82,8 +105,8 @@ panel's own container.
 
 ```
 trantor node
-├── node-exporter (DaemonSet, hostNetwork, :9100)      — reads /proc, /sys
-├── nvidia_gpu_exporter (DaemonSet, hostPath devices)  — wraps nvidia-smi
+├── node-exporter (DaemonSet, ClusterIP Service, :9100)      — reads /proc, /sys
+├── nvidia_gpu_exporter (DaemonSet, runtimeClassName: nvidia)  — wraps nvidia-smi
 │
 └── model-panel pod (unchanged hardening)
     ├── GET /api/metrics  → scrapes both exporters' Services, parses, returns JSON

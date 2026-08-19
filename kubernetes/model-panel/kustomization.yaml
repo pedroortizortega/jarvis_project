@@ -7,5 +7,7 @@ resources:
   - service.yaml
   - node-exporter.yaml
   - node-exporter-service.yaml
+  - gpu-exporter.yaml
+  - gpu-exporter-service.yaml
   - tlsoption.yaml
   - ingress.yaml

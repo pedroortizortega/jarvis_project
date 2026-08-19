@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvidia-gpu-exporter
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: nvidia-gpu-exporter
+    app.kubernetes.io/part-of: gpu-handoff-web-panel
+spec:
+  type: ClusterIP
+  selector:
+    app: nvidia-gpu-exporter
+  ports:
+    - name: http
+      port: 9835
+      targetPort: http

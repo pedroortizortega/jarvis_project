@@ -3,6 +3,17 @@ from enum import Enum
 from typing import Protocol, runtime_checkable
 
 
+class BackendUnavailableError(Exception):
+    """Raised by an adapter when its backend cannot serve a request (e.g. the
+    subprocess crashed). The dispatcher treats this as "degraded", never as
+    a request failure."""
+
+    def __init__(self, backend: str, reason: str):
+        self.backend = backend
+        self.reason = reason
+        super().__init__(f"backend {backend!r} unavailable: {reason}")
+
+
 class HealthStatus(Enum):
     OK = "ok"
     DEGRADED = "degraded"

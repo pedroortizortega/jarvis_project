@@ -1,6 +1,13 @@
+import sys
 import unittest
+from pathlib import Path
+
+sys.path.insert(
+    0, str(Path(__file__).resolve().parent.parent / "hermes-native" / "orchestration" / "src")
+)
 
 from memory_router.contracts import (
+    BackendUnavailableError,
     Capabilities,
     Health,
     HealthStatus,
@@ -87,6 +94,12 @@ class ContractsTests(unittest.TestCase):
             pass
 
         self.assertNotIsInstance(NotABackend(), MemoryBackend)
+
+
+    def test_backend_unavailable_error_carries_reason(self):
+        error = BackendUnavailableError("engram", "subprocess exited")
+        self.assertEqual("engram", error.backend)
+        self.assertIn("subprocess exited", str(error))
 
 
 if __name__ == "__main__":

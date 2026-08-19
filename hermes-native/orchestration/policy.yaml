@@ -1,0 +1,67 @@
+version: 1
+
+profiles:
+  - luna-low
+  - luna-medium
+  - luna-high
+  - terra-low
+  - terra-medium
+  - terra-high
+  - sol-low
+  - sol-medium
+  - sol-high
+
+confidence:
+  apply: 0.80
+  economical: 0.55
+
+routes:
+  chat:
+    low: local
+    medium: local
+    high: local
+  lookup:
+    low: luna-low
+    medium: luna-high
+    high: terra-medium
+  research:
+    low: luna-high
+    medium: terra-medium
+    high: terra-high
+  deep_research:
+    low: sol-high
+    medium: sol-high
+    high: sol-high
+  coding:
+    low: local
+    medium: terra-medium
+    high: terra-high
+  review:
+    low: terra-medium
+    medium: terra-medium
+    high: terra-high
+  incident:
+    low: terra-high
+    medium: terra-high
+    high: sol-high
+  local_large:
+    low: local_large
+    medium: local_large
+    high: local_large
+
+economical_routes:
+  luna-medium: luna-low
+  luna-high: luna-low
+  terra-low: luna-high
+  terra-medium: luna-high
+  terra-high: terra-medium
+  sol-low: terra-high
+  sol-medium: terra-high
+  sol-high: terra-high
+
+budgets:
+  luna-low: {timeout_seconds: 120, max_sources: 2}
+  luna-high: {timeout_seconds: 300, max_sources: 3}
+  terra-medium: {timeout_seconds: 900, max_sources: 8}
+  terra-high: {timeout_seconds: 1200, max_sources: 12}
+  sol-high: {timeout_seconds: 2700, max_sources: 20}

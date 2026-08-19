@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HermesIntentClassification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_class",
+    "complexity",
+    "needs_current_data",
+    "needs_tools",
+    "privacy",
+    "risk",
+    "route",
+    "confidence",
+    "reason"
+  ],
+  "properties": {
+    "task_class": {
+      "enum": ["chat", "lookup", "research", "deep_research", "coding", "review", "incident", "local_large"]
+    },
+    "complexity": {"enum": ["low", "medium", "high"]},
+    "needs_current_data": {"type": "boolean"},
+    "needs_tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["web_search", "web_extract", "browser", "files", "terminal", "tests", "citations", "deep_research"]}
+    },
+    "privacy": {"enum": ["local_only", "cloud_allowed"]},
+    "risk": {"enum": ["low", "medium", "high"]},
+    "route": {
+      "enum": ["local", "local_large", "luna-low", "luna-medium", "luna-high", "terra-low", "terra-medium", "terra-high", "sol-low", "sol-medium", "sol-high"]
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 160}
+  }
+}

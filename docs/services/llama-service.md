@@ -97,6 +97,31 @@ base weights; Unsloth publishes the quantizations.
 Service. There is no separate callbacks file on disk — it's a literal block
 inside the ConfigMap's `data`.
 
+```mermaid
+graph TD
+    Req["Chat completion request<br/>names a model"] --> Lookup["LiteLLM looks up model_name<br/>in model_list<br/>(litellm-config.yaml)"]
+    Lookup -->|qwen3| Vllm["vllm:8000/v1"]
+    Lookup -->|qwen3.6-27b /<br/>qwen3.6-27b-q3| Router["llama-router:8080/v1<br/>(preset qwen3.6-27b-q3)"]
+    Lookup -->|qwen3.5-9b| Router2["llama-router:8080/v1<br/>(preset qwen3.5-9b)"]
+    Lookup -->|qwen3.6-27b-q6| Q6["llama-server-q6:8080/v1<br/>(direct, not via router)"]
+    Lookup -->|cloud| Shim["codex-shim:8080/v1<br/>-> chatgpt.com Responses API"]
+
+    Lookup -.->|"router_settings:<br/>allowed_fails: 3, cooldown_time: 30<br/>(no replica redundancy per alias —<br/>3 consecutive fails before a 30s cooldown)"| Cooldown[" "]
+    style Cooldown fill:none,stroke:none
+```
+
+Every alias below is controlled by the same single file — **changing this
+routing is a one-file edit**:
+
+| Alias | Backend | Controlling file |
+|---|---|---|
+| `qwen3` | `vllm:8000/v1` | `kubernetes/proxy/litellm-config.yaml` |
+| `qwen3.6-27b` | `llama-router:8080/v1` (preset `qwen3.6-27b-q3`) | `kubernetes/proxy/litellm-config.yaml` |
+| `qwen3.6-27b-q3` | `llama-router:8080/v1` (preset `qwen3.6-27b-q3`) | `kubernetes/proxy/litellm-config.yaml` |
+| `qwen3.6-27b-q6` | `llama-server-q6:8080/v1` (direct) | `kubernetes/proxy/litellm-config.yaml` |
+| `qwen3.5-9b` | `llama-router:8080/v1` (preset `qwen3.5-9b`) | `kubernetes/proxy/litellm-config.yaml` |
+| `cloud` | `codex-shim:8080/v1` | `kubernetes/proxy/litellm-config.yaml` |
+
 | Alias | Backend | Notes |
 |---|---|---|
 | `qwen3` | `vllm.llms.svc.cluster.local:8000/v1` | `api_key: "not-needed"` — vLLM doesn't enforce its own key, LiteLLM's master key is the outward-facing auth. Rewritten to `codex-shim` by model-panel during a Cloud handoff. |

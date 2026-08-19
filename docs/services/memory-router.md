@@ -68,6 +68,40 @@ client (mTLS cert + bearer, Tailnet)
   -> EngramBackend -> subprocess `engram mcp --tools=agent` -> engram-cloud.mcps.svc.cluster.local:8080
 ```
 
+The same pipeline, as a `store` call end to end (the compact table above stays useful as a one-glance reference; this sequence pins down the exact order, ownership, and branch points):
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Traefik
+    participant Dispatcher as Dispatcher (app.py)
+    participant Identity as Identity (identity.py)
+    participant Namespace as Namespace (namespaces.py)
+    participant Permissions as Permissions (permissions.py)
+    participant Registry as Registry (registry.py)
+    participant Backend as Backend (EngramBackend)
+
+    Client->>Traefik: POST /memory/store (mTLS cert + bearer, Tailnet)
+    Traefik->>Traefik: RequireAndVerifyClientCert (TLSOption mcps-memory-router-mtls)
+    Traefik->>Dispatcher: forward + X-Forwarded-Client-Cert-Cn header
+    Dispatcher->>Identity: _authenticate(cn, bearer) -> resolve_identity
+    Identity-->>Dispatcher: Identity or IdentityError -> 401 identity_rejected
+    Dispatcher->>Namespace: _validate_namespace(namespace)
+    Namespace-->>Dispatcher: normalized namespace or NamespaceError -> 400 invalid_namespace
+    Dispatcher->>Permissions: _authorize(role, identity, namespace, verb="store")
+    Permissions-->>Dispatcher: allow or AuthorizationError -> 400/403
+    Dispatcher->>Registry: backends_for(verb="store", namespace)
+    Registry-->>Dispatcher: capability-matched adapters (fnmatch on Capabilities.namespaces)
+    Dispatcher->>Backend: backend.store(req)
+    alt backend reachable
+        Backend-->>Dispatcher: StoreResult(status, backend, id)
+        Dispatcher-->>Client: 202 {"status": "committed", ...}
+    else BackendUnavailableError
+        Dispatcher->>Dispatcher: Journal.append(entry) — fsync + directory fsync
+        Dispatcher-->>Client: 202 {"status": "pending", "queue_id": uuid4}
+    end
+```
+
 Implementation is pure-stdlib Python 3.11 (`http.server.ThreadingHTTPServer`)
 — four Tailnet clients don't justify a new ASGI stack. The router itself is
 stateless per request; only the write journal and Engram's own store are
@@ -260,6 +294,35 @@ entries); `Journal.ack(entry_id)` removes one entry via write-to-temp-file
 call once a backend confirms the deferred write. Verified by
 `tests/test_memory_router_journal.py`, including a test that reopens the
 journal file in a fresh `Journal` instance and confirms entries survive.
+
+```mermaid
+graph TD
+    A["store request<br/>Dispatcher.store"] --> B["backend.store(req)"]
+    B -->|BackendUnavailableError| C["Journal.append(entry)<br/>fsync file + fsync directory"]
+    C --> D["client gets 202<br/>{status: pending, queue_id}"]
+    D -.->|"later — external process"| E{{"drainer process<br/>NOT IMPLEMENTED"}}
+    E -->|"backend recovers"| F["Journal.replay()<br/>read all pending entries"]
+    F --> G["retry backend.store(entry)"]
+    G -->|success| H["Journal.ack(entry_id)<br/>write-to-temp + os.replace + fsync dir"]
+
+    style E fill:#fff3cd,stroke:#d39e00,stroke-dasharray: 5 5
+    style C fill:#d4edda,stroke:#28a745
+    style F fill:#d4edda,stroke:#28a745
+    style H fill:#d4edda,stroke:#28a745
+```
+
+**Implemented today** (green nodes above, tested by
+`tests/test_memory_router_journal.py`): `Journal.append`, `Journal.replay`,
+`Journal.ack` — the append/read/acknowledge primitives, each durable
+against a crash immediately after it returns. **Not implemented**
+(dashed/amber node): an actual automated drainer process that calls
+`replay()` and `ack()` on a schedule or on backend-recovery signal. Neither
+`app.py` nor `journal.py` contains any such loop, poller, or scheduled job
+— the docstring on `journal.py::Journal` and this section's prose both
+describe the drainer only as future work ("for a drainer process to call
+once a backend confirms the deferred write"). Today, a pending entry stays
+in the journal until something external reads it; there is no code path in
+this repo that drains it automatically.
 
 **Why `replicas: 1` + `strategy: Recreate` is a hard requirement, not a
 style choice:** the journal is a single-writer append-only file on one

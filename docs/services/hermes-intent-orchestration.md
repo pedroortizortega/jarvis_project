@@ -99,6 +99,51 @@ explicitly asking for it — then it's discarded back to the rule result),
 
 ## How routing works
 
+The diagram below traces one turn end to end: classification in
+`pre_llm_call`, `RouterPolicy.decide()`'s precedence chain, the two extra
+safety gates applied afterward, and how `llm_execution` turns the resulting
+`Decision` into an actual response.
+
+```mermaid
+graph TD
+    subgraph S1["pre_llm_call — classify & decide"]
+        A["User turn"] --> B{"mode == disabled?"}
+        B -- yes --> B1["no-op, return"]
+        B -- no --> C["rule_classification() always runs +\nsemantic_classification() if enabled\n(single call to local_base_urls, hard 15s timeout)"]
+        C --> D["Classification\n(task_class, complexity, risk, privacy)"]
+        D --> E["RouterPolicy.decide()"]
+        E --> F{"privacy == local_only?"}
+        F -- "yes — outranks every other rule,\nnot even explicit sol-high overrides it" --> F1["final = local / local_large\nrule = privacy_local_only"]
+        F -- no --> G["explicit_profile -> explicit_local_large ->\nconfidence >= apply (0.80) -> >= economical (0.55)\n-> low_confidence_fallback"]
+        G --> P["proposed_route -> final_route\n(Decision, should_delegate)"]
+        F1 --> P
+        P --> Q{"classifier_unavailable AND explicit_override AND\nmode in explicit,auto AND\nrequire_classifier_for_explicit?"}
+        Q -- yes --> Q1["rule = explicit_classifier_unavailable\nshould_delegate = False"]
+        Q -- no --> R{"should_delegate AND\n(final_route == sol-high OR risk == high) AND\nNOT allow_high_risk_auto AND NOT explicit_override?"}
+        R -- yes --> R1["rule = confirmation_required\nshould_delegate = False"]
+    end
+
+    Q1 --> X["Decision handed to llm_execution"]
+    R1 --> X
+    R -- no --> X
+    X --> Y{"classification.privacy == local_only?"}
+    Y -- yes --> Y1["direct local completion\nstatus = privacy_local\n(privacy_local_failed on error)"]
+    Y -- no --> Z{"final_route == local_large AND\nmode != shadow?"}
+    Z -- yes --> Z1["synthetic response\nstatus = local_large_unavailable"]
+    Z -- no --> AA{"rule == explicit_classifier_unavailable?"}
+    AA -- yes --> AA1["synthetic response\nstatus = explicit_blocked"]
+    AA -- no --> BB{"should_delegate?"}
+    BB -- yes --> CC["delegated worker subprocess\non the routed Luna/Terra/Sol profile\nstatus = delegated"]
+    BB -- no --> DD["primary model answers normally\nstatus = local\n(covers confirmation_required and\nlow_confidence_fallback alike)"]
+```
+
+`confirmation_required` blocks delegation but is not a synthetic
+"unavailable" message like the other two fail-closed paths — it just falls
+through to the primary model the same way a low-confidence decision would;
+only the audited `rule` column tells them apart. See the precedence list
+below for the full detail behind the compressed `explicit_profile -> ...`
+box above.
+
 `RouterPolicy.decide(text, semantic, mode)` produces a `Decision`
 (`proposed_route` → `final_route`, plus `rule` naming which branch fired).
 Precedence, first match wins:

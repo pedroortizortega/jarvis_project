@@ -32,40 +32,40 @@ Chain strategy: pending
 
 ## Phase 1: Contracts (foundation)
 
-- [ ] 1.1 RED `tests/test_memory_router_contracts.py`: `Capabilities`, `Health`, `StoreRequest/Result`, `SearchRequest/Result` shapes and `MemoryBackend` protocol conformance
-- [ ] 1.2 GREEN `src/memory_router/contracts.py`: implement dataclasses/enum/Protocol
+- [x] 1.1 RED `tests/test_memory_router_contracts.py`: `Capabilities`, `Health`, `StoreRequest/Result`, `SearchRequest/Result` shapes and `MemoryBackend` protocol conformance
+- [x] 1.2 GREEN `src/memory_router/contracts.py`: implement dataclasses/enum/Protocol
 
 ## Phase 2: Namespace validation
 
-- [ ] 2.1 RED `tests/test_memory_router_namespaces.py`: accepts the 4 fixed roots; rejects traversal (`..`), wildcards, unknown roots, missing namespace
-- [ ] 2.2 GREEN `src/memory_router/namespaces.py`: `validate_namespace()`, fail-closed
+- [x] 2.1 RED `tests/test_memory_router_namespaces.py`: accepts the 4 fixed roots; rejects traversal (`..`), wildcards, unknown roots, missing namespace
+- [x] 2.2 GREEN `src/memory_router/namespaces.py`: `validate_namespace()`, fail-closed
 
 ## Phase 3: Identity & permissions
 
-- [ ] 3.1 RED `tests/test_memory_router_identity.py`: CN→identity resolution; bearer mismatch rejected
-- [ ] 3.2 GREEN `src/memory_router/identity.py`
-- [ ] 3.3 RED `tests/test_memory_router_permissions.py`: 3-role table incl. deny-by-default (`admin/*`), unknown role rejected, role outside client's permitted set rejected
-- [ ] 3.4 GREEN `src/memory_router/permissions.py`
+- [x] 3.1 RED `tests/test_memory_router_identity.py`: CN→identity resolution; bearer mismatch rejected
+- [x] 3.2 GREEN `src/memory_router/identity.py`
+- [x] 3.3 RED `tests/test_memory_router_permissions.py`: 3-role table incl. deny-by-default (`admin/*`), unknown role rejected, role outside client's permitted set rejected
+- [x] 3.4 GREEN `src/memory_router/permissions.py`
 
 ## Phase 4: Journal
 
-- [ ] 4.1 RED `tests/test_memory_router_journal.py`: append+fsync, re-open after simulated restart replays queued entries durably
-- [ ] 4.2 GREEN `src/memory_router/journal.py`: NDJSON append-only journal
+- [x] 4.1 RED `tests/test_memory_router_journal.py`: append+fsync, re-open after simulated restart replays queued entries durably
+- [x] 4.2 GREEN `src/memory_router/journal.py`: NDJSON append-only journal
 
 ## Phase 5: Registry & Engram adapter
 
-- [ ] 5.1 RED `tests/test_memory_router_registry.py`: capability-based adapter selection (search-only adapter excluded from store dispatch)
-- [ ] 5.2 GREEN `src/memory_router/registry.py`: entry-point loading (`memory_router.backends`)
-- [ ] 5.3 RED `tests/test_memory_router_engram_adapter.py`: fixed argv/no shell/no caller-controlled env; subprocess crash → `degraded`, not request failure
-- [ ] 5.4 GREEN `src/memory_router/backends/engram.py`: `engram mcp --tools=agent` adapter, namespace→`topic_key` prefix mapping
+- [x] 5.1 RED `tests/test_memory_router_registry.py`: capability-based adapter selection (search-only adapter excluded from store dispatch)
+- [x] 5.2 GREEN `src/memory_router/registry.py`: entry-point loading (`memory_router.backends`)
+- [x] 5.3 RED `tests/test_memory_router_engram_adapter.py`: fixed argv/no shell/no caller-controlled env; subprocess crash → `degraded`, not request failure
+- [x] 5.4 GREEN `src/memory_router/backends/engram.py`: `engram mcp --tools=agent` adapter, namespace→`topic_key` prefix mapping
 
 ## Phase 6: App — dispatcher, REST, MCP shim
 
-- [ ] 6.1 RED `tests/test_memory_router_app.py`: healthy store commit; degraded store → pending via journal, never dropped; hierarchical search fallback project→agent→global; store never falls back; degraded search returns partial results + unavailable marker
-- [ ] 6.2 GREEN `src/memory_router/app.py`: dispatcher wiring identity→permissions→namespaces→registry
-- [ ] 6.3 RED (extend `test_memory_router_app.py`): `/memory/reflect` returns `501`, no backend call; MCP and REST parity for store/search
-- [ ] 6.4 GREEN `app.py`: reflect stub route + MCP stdio shim entry point
-- [ ] 6.5 Modify `pyproject.toml`: add `memory_router.backends` entry-point group; console scripts for REST service and `memory-router-mcp`
+- [x] 6.1 RED `tests/test_memory_router_app.py`: healthy store commit; degraded store → pending via journal, never dropped; hierarchical search fallback project→agent→global; store never falls back; degraded search returns partial results + unavailable marker
+- [x] 6.2 GREEN `src/memory_router/app.py`: dispatcher wiring identity→permissions→namespaces→registry
+- [x] 6.3 RED (extend `test_memory_router_app.py`): `/memory/reflect` returns `501`, no backend call; MCP and REST parity for store/search
+- [x] 6.4 GREEN `app.py`: reflect stub route + MCP stdio shim entry point
+- [x] 6.5 Modify `pyproject.toml`: add `memory_router.backends` entry-point group; console scripts for REST service and `memory-router-mcp`
 
 ## Phase 7: Deployment manifests
 

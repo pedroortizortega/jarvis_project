@@ -64,6 +64,24 @@ def test_parse_node_cpu_totals_returns_none_when_absent():
     assert non_idle is None
 
 
+def test_parse_node_cpu_totals_skips_malformed_float_values():
+    """Test that malformed float values (e.g., '1e', '1.2.3') are skipped
+    rather than raising ValueError. One bad line should not kill aggregation."""
+    text = """\
+# TYPE node_cpu_seconds_total counter
+node_cpu_seconds_total{cpu="0",mode="idle"} 1000.5
+node_cpu_seconds_total{cpu="0",mode="user"} 1e
+node_cpu_seconds_total{cpu="1",mode="idle"} 980.0
+node_cpu_seconds_total{cpu="1",mode="user"} 210.0
+"""
+    # Should skip the malformed '1e' line and sum the rest.
+    idle, non_idle = parse_node_cpu_totals(text)
+    # 1000.5 + 980.0 = 1980.5 (idle)
+    # 210.0 (non_idle, the '1e' line is skipped)
+    assert idle == pytest.approx(1980.5)
+    assert non_idle == pytest.approx(210.0)
+
+
 def test_parse_single_gauge_reads_labeled_and_unlabeled_metrics():
     assert parse_single_gauge(NODE_EXPORTER_TEXT, "node_memory_MemTotal_bytes") == pytest.approx(1.6e10)
     assert parse_single_gauge(GPU_EXPORTER_TEXT, "nvidia_smi_memory_used_bytes") == pytest.approx(706740224.0)
@@ -71,6 +89,17 @@ def test_parse_single_gauge_reads_labeled_and_unlabeled_metrics():
 
 def test_parse_single_gauge_returns_none_when_missing():
     assert parse_single_gauge(NODE_EXPORTER_TEXT, "does_not_exist") is None
+
+
+def test_parse_single_gauge_returns_none_on_malformed_float_value():
+    """Test that malformed float values are treated as absent (None)
+    rather than raising ValueError."""
+    text = """\
+# TYPE node_memory_MemTotal_bytes gauge
+node_memory_MemTotal_bytes 1.2.3
+"""
+    result = parse_single_gauge(text, "node_memory_MemTotal_bytes")
+    assert result is None
 
 
 def test_compute_cpu_pct_from_deltas():

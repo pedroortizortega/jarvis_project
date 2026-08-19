@@ -33,12 +33,18 @@ _CPU_METRIC_RE = re.compile(
 def parse_node_cpu_totals(text: str) -> Tuple[Optional[float], Optional[float]]:
     """Sums `node_cpu_seconds_total` across all cores into (idle, non_idle)
     buckets. Returns (None, None) if the metric isn't present at all
-    (malformed/unexpected exporter output)."""
+    (malformed/unexpected exporter output). Skips any lines with malformed
+    float values rather than raising."""
     idle = 0.0
     non_idle = 0.0
     found = False
     for match in _CPU_METRIC_RE.finditer(text):
-        mode, value = match.group(1), float(match.group(2))
+        mode = match.group(1)
+        try:
+            value = float(match.group(2))
+        except ValueError:
+            # Malformed float value (e.g., '1e', '1.2.3') — skip this line.
+            continue
         found = True
         if mode == "idle":
             idle += value
@@ -53,14 +59,18 @@ def parse_single_gauge(text: str, metric_name: str) -> Optional[float]:
     """Reads the first sample of a single-value gauge metric, with or
     without labels (`node_memory_MemTotal_bytes 100` or
     `nvidia_smi_memory_used_bytes{uuid="..."} 100`). Returns None if the
-    metric line isn't present."""
+    metric line isn't present or the value is malformed."""
     pattern = re.compile(
         rf'^{re.escape(metric_name)}(?:\{{[^}}]*\}})?\s+([0-9.eE+\-]+)', re.MULTILINE
     )
     match = pattern.search(text)
     if not match:
         return None
-    return float(match.group(1))
+    try:
+        return float(match.group(1))
+    except ValueError:
+        # Malformed float value (e.g., '1e', '1.2.3') — treat as absent.
+        return None
 
 
 def compute_cpu_pct_from_deltas(

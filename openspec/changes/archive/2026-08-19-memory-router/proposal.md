@@ -39,9 +39,9 @@ Thin stateless router: authenticate identity -> resolve namespace -> authorize v
 | Area | Impact | Description |
 |------|--------|-------------|
 | `kubernetes/mcps/` | New | `memory-router` deployment, service, policy. |
-| `hermes-native/orchestration/` | New | Router, adapters, permission engine. |
+| `hermes-native/memory-router/` | New | Router, adapters, permission engine. |
 | `tests/` | New | Unit tests (`python -m unittest discover -s tests`). |
-| `specs/012_memory_router.md` | New | Numbered spec companion. |
+| `specs/014_memory_router.md` | New | Numbered spec companion. |
 | `openspec/changes/memory-router/` | New | SDD artifacts. |
 
 ## Risks

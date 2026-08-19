@@ -19,7 +19,7 @@ Memory Router Phase 1 has been successfully completed, implemented, verified, an
 | Engram adapter | Complete | Single reference implementation, namespace→topic_key prefix mapping, degraded → partial results |
 | Dual surfaces (REST + MCP stdio shim) | Complete | `/memory/store`, `/memory/search`, `/memory/reflect`, `/agents/{name}/context`, `/projects/{name}/context` |
 | Kubernetes manifests | Authored | 6 YAML files (configmap, deployment, service, PVC, ingress, tlsoption); NOT APPLIED (see blocker below) |
-| Numbered spec companion | Complete | `specs/012_memory_router.md` |
+| Numbered spec companion | Complete | `specs/014_memory_router.md` |
 | Test suite | Complete | 80/80 unit tests passing (`python -m unittest discover -s tests`) |
 
 ### Scope Explicitly Deferred

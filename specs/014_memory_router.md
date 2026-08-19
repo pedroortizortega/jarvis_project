@@ -107,7 +107,7 @@ propios: el adaptador codifica el namespace como un prefijo reservado de
 `store` → `mem_save`; `search` → `mem_search`. `reflect` está ausente de
 sus capacidades.
 
-Fuente: `hermes-native/orchestration/src/memory_router/backends/engram.py`.
+Fuente: `hermes-native/memory-router/src/memory_router/backends/engram.py`.
 
 ---
 
@@ -161,7 +161,7 @@ combinación no listada se deniega con `403`):
 | `scientist` | store+search | search | search | store+search | deny | deny |
 | `jarvis` | store+search | store+search | store+search | store+search | store+search | deny |
 
-Fuente: `hermes-native/orchestration/src/memory_router/permissions.py`.
+Fuente: `hermes-native/memory-router/src/memory_router/permissions.py`.
 
 ---
 
@@ -255,7 +255,7 @@ Preguntas abiertas adicionales (heredadas de `design.md`):
   `specs/*/spec.md` — artefactos SDD completos de este change.
 - `specs/011_engram_cloud_centralized.md` — único backend real hoy; camino
   de acceso que reutiliza el adaptador de esta fase.
-- `hermes-native/orchestration/src/memory_router/` — código fuente.
+- `hermes-native/memory-router/src/memory_router/` — código fuente.
 - `tests/test_memory_router_*.py` — suite de tests unitarios
   (`python -m unittest discover -s tests`).
 

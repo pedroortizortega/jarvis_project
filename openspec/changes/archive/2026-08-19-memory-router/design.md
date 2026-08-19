@@ -36,7 +36,7 @@ class MemoryBackend(Protocol):
     def search(self, req: SearchRequest) -> SearchResult: ...
 ```
 
-Registration is a setuptools entry point group `memory_router.backends`, mirroring `hermes_agent.plugins` in `hermes-native/orchestration/pyproject.toml`. Adding backend #2 = new package + entry point + config row; no router code change.
+Registration is a setuptools entry point group `memory_router.backends`, mirroring `hermes_agent.plugins` in `hermes-native/memory-router/pyproject.toml`. Adding backend #2 = new package + entry point + config row; no router code change.
 
 **Engram reference adapter**: spawns `engram mcp --tools=agent` with `ENGRAM_CLOUD_SERVER=http://engram-cloud.mcps.svc.cluster.local:8080`, per-identity `ENGRAM_CLOUD_TOKEN`, `ENGRAM_CLOUD_AUTOSYNC=1` — the access path proven in spec 011. Engram has no namespaces, so the adapter encodes namespace as a reserved `topic_key` prefix (`ns:/projects/foo/...`) inside project `jarvis_project`; `store`->`mem_save`, `search`->`mem_search` + `mem_get_observation`. `reflect` is absent from its capabilities.
 
@@ -77,12 +77,12 @@ Identity map: `pedro-claude-code`->{coder}, `codex`->{coder}, `opencode`->{coder
 
 | File | Action | Description |
 |---|---|---|
-| `hermes-native/orchestration/src/memory_router/{app,identity,permissions,namespaces,registry,journal,contracts}.py` | Create | Router core. |
-| `hermes-native/orchestration/src/memory_router/backends/engram.py` | Create | Reference adapter. |
-| `hermes-native/orchestration/pyproject.toml` | Modify | Add `memory_router.backends` group + console scripts. |
+| `hermes-native/memory-router/src/memory_router/{app,identity,permissions,namespaces,registry,journal,contracts}.py` | Create | Router core. |
+| `hermes-native/memory-router/src/memory_router/backends/engram.py` | Create | Reference adapter. |
+| `hermes-native/memory-router/pyproject.toml` | Modify | Add `memory_router.backends` group + console scripts. |
 | `kubernetes/mcps/memory-router-{configmap,deployment,service,pvc,ingress,tlsoption}.yaml` | Create | Third `mcps` tenant, ClusterIP:8080, `automountServiceAccountToken: false`, non-root, read-only rootfs, caps dropped. |
 | `tests/test_memory_router_*.py` | Create | RED tests. |
-| `specs/012_memory_router.md` | Create | Numbered spec companion. |
+| `specs/014_memory_router.md` | Create | Numbered spec companion. |
 
 ## Testing Strategy
 

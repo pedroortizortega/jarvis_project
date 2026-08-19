@@ -26,7 +26,7 @@ Chain strategy: pending
 | 4 | `registry.py` + `backends/engram.py` | PR 4 | `python -m unittest tests.test_memory_router_registry tests.test_memory_router_engram_adapter` | Mocked `engram mcp` subprocess (unit-level); manual live run vs `engram-cloud.mcps` deferred | Delete module + tests |
 | 5 | `app.py` + `pyproject.toml` entry points | PR 5 | `python -m unittest tests.test_memory_router_app` | `python -m memory_router.app` against Phase 1–4 modules | Revert `app.py`, `pyproject.toml` diff |
 | 6 | `kubernetes/mcps/memory-router-*.yaml` | PR 6 | N/A — manifests only, no unit test | `kubectl apply --dry-run=client -f kubernetes/mcps/` | Delete the 6 YAML files; not applied to cluster until manifest-ownership blocker resolved |
-| 7 | `specs/012_memory_router.md` | PR 7 | N/A — doc only | N/A | Delete file |
+| 7 | `specs/014_memory_router.md` | PR 7 | N/A — doc only | N/A | Delete file |
 
 **Blocker (separate from authoring)**: PR 6 YAML may be written now, but `kubectl apply` is gated on resolving Engram Cloud manifest ownership/origin (design.md Open Questions — untracked upstream manifests, undocumented owner).
 
@@ -84,4 +84,4 @@ Chain strategy: pending
 
 ## Phase 8: Spec companion
 
-- [x] 8.1 Create `specs/012_memory_router.md` following the `specs/011_engram_cloud_centralized.md` numbering/format convention; document Phase 1 scope, contracts, roles, namespaces, degraded-backend semantics
+- [x] 8.1 Create `specs/014_memory_router.md` following the `specs/011_engram_cloud_centralized.md` numbering/format convention; document Phase 1 scope, contracts, roles, namespaces, degraded-backend semantics

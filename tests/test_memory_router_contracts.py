@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(
-    0, str(Path(__file__).resolve().parent.parent / "hermes-native" / "orchestration" / "src")
+    0, str(Path(__file__).resolve().parent.parent / "hermes-native" / "memory-router" / "src")
 )
 
 from memory_router.contracts import (

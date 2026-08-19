@@ -41,7 +41,23 @@ graph TD
     P5e --> P6[Phase 6: model-panel]
     P6 --> P7[Phase 7: mcps]
     P7 --> FV[Final validation checklist]
+
+    click P0 "../../specs/001_k8s_llm_cluster.md" "specs/001 section A0"
+    click P1 "../../specs/001_k8s_llm_cluster.md" "specs/001 sections A1-A2"
+    click P2 "../../specs/001_k8s_llm_cluster.md" "specs/001 section A5"
+    click P3 "../../specs/001_k8s_llm_cluster.md" "specs/001 section A6"
+    click P4 "../../specs/001_k8s_llm_cluster.md" "specs/001 (namespace creation, inline commands above)"
+    click P5a "../services/llama-service.md" "llama-service.md - Deploying from scratch"
+    click P5b "../../kubernetes/llama-service/" "kubernetes/llama-service/ manifests"
+    click P5c "../../kubernetes/llama-service/" "kubernetes/llama-service/ model-download Jobs"
+    click P5d "../../kubernetes/proxy/litellm-config.yaml" "kubernetes/proxy/litellm-config.yaml"
+    click P5e "../../kubernetes/codex-shim/" "kubernetes/codex-shim/"
+    click P6 "../services/model-panel.md" "model-panel.md - Deploying"
+    click P7 "../engram-cloud/installation.md" "Engram Cloud installation"
+    click FV "#final-validation-checklist" "Final validation checklist section"
 ```
+
+Every node above is a link — click it to jump to the file/doc that implements that step (works in GitHub's rendered markdown and in editors whose Mermaid preview supports `click`, e.g. VS Code with a Mermaid preview extension).
 
 | Node | File(s) / command | Notes |
 |------|--------------------|-------|
@@ -238,6 +254,16 @@ graph TD
     B5 --> B6[B6: Taint node pools]
     B6 --> B7[B7: Create hermes-agents namespace]
     B7 -.superseded by spec 004.-> B8[B8: Deploy Hermes Agent - NOT this path]
+
+    click B0 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B0"
+    click B1 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B1"
+    click B2 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B2"
+    click B3 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B3"
+    click B4 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B4"
+    click B5 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B5"
+    click B6 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B6"
+    click B7 "../../specs/001_k8s_llm_cluster.md" "specs/001 section B7"
+    click B8 "hermes-gateway-install.md" "hermes-gateway-install.md - RPi worker section (not implemented)"
 ```
 
 | Node | Spec 001 section | Notes |

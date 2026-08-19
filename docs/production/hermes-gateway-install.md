@@ -64,6 +64,19 @@ graph TD
     FENCE -- "operator types 'yes'" --> ENABLED
     FENCE -- "anything else" --> DISABLED
     START -- "no" --> DISABLED
+
+    click F0 "../../hermes-native/scripts/install-hermes.sh" "Fase 0: preflight"
+    click F1 "../../hermes-native/scripts/install-hermes.sh" "Fase 1: system dependencies"
+    click F3 "../../hermes-native/scripts/install-hermes.sh" "Fase 3: install runtime"
+    click F5 "../../kubernetes/hermes/config/SOUL.md" "kubernetes/hermes/config/SOUL.md - applied in Fase 5"
+    click F7 "../../kubernetes/hermes/profiles/profiles.yaml" "kubernetes/hermes/profiles/profiles.yaml - reconciled in Fase 7"
+    click F8 "../../hermes-native/scripts/install-hermes.sh" "Fase 8: write .env"
+    click F9 "../../hermes-native/scripts/install-hermes.sh" "Fase 9: pre-systemd validation"
+    click F10 "../../hermes-native/scripts/install-hermes.sh" "Fase 10: systemd install"
+    click START "../../hermes-native/scripts/install-hermes.sh" "--start flag handling"
+    click FENCE "../../hermes-native/scripts/install-hermes.sh" "fencing checklist"
+    click ENABLED "../../hermes-native/scripts/install-hermes.sh" "systemctl enable --now"
+    click DISABLED "../../hermes-native/scripts/install-hermes.sh" "leaves unit disabled"
 ```
 
 | Fase | What it does | Exact file(s) read/written |
@@ -171,6 +184,18 @@ graph TD
     VALIDATE["Validate: gateway status shows no unit,<br/>hermes doctor OK, CLI reaches LiteLLM<br/>(spec 004 Fase 11, worker validation)"]
 
     ARCH --> OS --> MODE --> NOBROWSER --> CONFIG --> LANURL --> LOCALBACKEND --> NOTOKEN --> NOAUTH --> NOGATEWAY --> VALIDATE
+
+    click ARCH "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 2"
+    click OS "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 1"
+    click MODE "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 4"
+    click NOBROWSER "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 3"
+    click CONFIG "../../specs/004_hermes_native_clone_systemd.md" "acceptance criteria, En Raspberry Pi worker"
+    click LANURL "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 5"
+    click LOCALBACKEND "../../specs/004_hermes_native_clone_systemd.md" "Particularidades de Raspberry Pi, item 6"
+    click NOTOKEN "../../specs/004_hermes_native_clone_systemd.md" "Fase 8 role policy table"
+    click NOAUTH "../../specs/004_hermes_native_clone_systemd.md" "Fase 7 discussion + Particularidades item 8"
+    click NOGATEWAY "../../specs/004_hermes_native_clone_systemd.md" "Fase 10, Worker sin mensajeria ni cron"
+    click VALIDATE "../../specs/004_hermes_native_clone_systemd.md" "Fase 11, worker validation"
 ```
 
 | Diagram node | Intended behavior | Spec 004 citation |

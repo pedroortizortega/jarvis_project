@@ -135,6 +135,31 @@ graph TD
     AA -- no --> BB{"should_delegate?"}
     BB -- yes --> CC["delegated worker subprocess\non the routed Luna/Terra/Sol profile\nstatus = delegated"]
     BB -- no --> DD["primary model answers normally\nstatus = local\n(covers confirmation_required and\nlow_confidence_fallback alike)"]
+
+    click A "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "pre_llm_call"
+    click B "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "pre_llm_call - mode check"
+    click B1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "pre_llm_call - mode disabled"
+    click C "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "rule/semantic classification"
+    click D "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "Classification dataclass"
+    click E "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "RouterPolicy.decide"
+    click F "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "privacy == local_only check"
+    click F1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "privacy_local_only rule"
+    click G "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "precedence chain"
+    click P "../../hermes-native/orchestration/src/hermes_intent_orchestration/policy.py" "Decision"
+    click Q "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "pre_llm_call - explicit_classifier_unavailable gate"
+    click Q1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "explicit_classifier_unavailable"
+    click R "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "pre_llm_call - confirmation_required gate"
+    click R1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "confirmation_required"
+    click X "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "llm_execution"
+    click Y "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "llm_execution - privacy check"
+    click Y1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "privacy_local / privacy_local_failed"
+    click Z "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "llm_execution - local_large check"
+    click Z1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "local_large_unavailable"
+    click AA "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "llm_execution - classifier_unavailable check"
+    click AA1 "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "explicit_blocked"
+    click BB "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "llm_execution - should_delegate check"
+    click CC "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "delegated worker subprocess"
+    click DD "../../hermes-native/orchestration/src/hermes_intent_orchestration/runtime.py" "primary model answers"
 ```
 
 `confirmation_required` blocks delegation but is not a synthetic

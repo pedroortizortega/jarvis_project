@@ -104,6 +104,13 @@ graph LR
     class Publisher publisher
     classDef human fill:#f9d5a7,stroke:#a86a1a,stroke-width:2px,color:#3a2200
     classDef publisher fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#0d2e10
+
+    click Agent "../../hermes-native/knowledge-vault/skills/propose-note/SKILL.md" "propose-note skill"
+    click Review1 "../../hermes-native/knowledge-vault/systemd/knowledge-vault-review.service" "knowledge-vault-review.service"
+    click Review2 "../../hermes-native/knowledge-vault/systemd/knowledge-vault-review.service" "knowledge-vault-review.service"
+    click Approve "../../hermes-native/knowledge-vault/systemd/knowledge-vault-approve.service" "knowledge-vault-approve.service"
+    click Publisher "../../hermes-native/knowledge-vault/systemd/knowledge-vault-publisher.service" "knowledge-vault-publisher.service"
+    click Mirror "../../hermes-native/knowledge-vault/systemd/knowledge-vault-mirror.service" "knowledge-vault-mirror.service"
 ```
 
 Only `knowledge-vault-publisher.service` writes to the canonical vault — see

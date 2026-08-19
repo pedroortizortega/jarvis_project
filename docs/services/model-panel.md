@@ -74,6 +74,17 @@ sequenceDiagram
     Panel-->>Client: phase leaves "transitioning"
 ```
 
+Mermaid sequence diagrams don't support clickable nodes (only flowcharts do)
+— jump straight to the source instead:
+
+| Step | File |
+|---|---|
+| `_check_bearer`, `api_switch`, `run_switch_in_background` | [`kubernetes/model-panel/app/main.py`](../../kubernetes/model-panel/app/main.py) |
+| `assert_switch_to_cloud_allowed` | [`kubernetes/model-panel/app/clients/codex_shim.py`](../../kubernetes/model-panel/app/clients/codex_shim.py) |
+| `wait_gpu_free`, `gpu_free`, `GpuNotFreeError` | [`kubernetes/model-panel/app/handoff/gpu.py`](../../kubernetes/model-panel/app/handoff/gpu.py) |
+| `patch_litellm_alias_yaml`, the rest of `switch_to()`'s steps | [`kubernetes/model-panel/app/handoff/steps.py`](../../kubernetes/model-panel/app/handoff/steps.py) |
+| The LiteLLM ConfigMap being patched | [`kubernetes/proxy/litellm-config.yaml`](../../kubernetes/proxy/litellm-config.yaml) |
+
 1. **Drain** — stop sending new traffic to the local model.
 2. **Scale to zero** — the currently-active local Deployment
    (`llama-router`, or whichever `vllm*`/`llama-server*` is active).
@@ -127,6 +138,15 @@ graph LR
     Parse --> JSON["{cpu_pct, ram_pct, vram_pct}<br/>JSON response"]
     Parse2 --> JSON
     JSON --> Render["panel.js: renderGauge()<br/>x3 (cpu/ram/vram)"]
+
+    click Browser "../../kubernetes/model-panel/app/static/panel.js" "panel.js"
+    click API "../../kubernetes/model-panel/app/main.py" "app/main.py"
+    click Fetch "../../kubernetes/model-panel/app/clients/metrics_client.py" "metrics_client.py"
+    click Node "../../kubernetes/model-panel/node-exporter.yaml" "node-exporter.yaml"
+    click Gpu "../../kubernetes/model-panel/gpu-exporter.yaml" "gpu-exporter.yaml"
+    click Parse "../../kubernetes/model-panel/app/clients/metrics_client.py" "metrics_client.py parse/compute functions"
+    click Parse2 "../../kubernetes/model-panel/app/clients/metrics_client.py" "metrics_client.py parse/compute functions"
+    click Render "../../kubernetes/model-panel/app/static/panel.js" "panel.js renderGauge()"
 ```
 
 **The GPU exporter deliberately never requests the `nvidia.com/gpu`

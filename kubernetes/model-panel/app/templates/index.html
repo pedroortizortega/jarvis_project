@@ -20,6 +20,24 @@
       <div id="mode-badge" class="badge">-</div>
       <div id="session-badge" class="badge">-</div>
 
+      <section id="metrics">
+        <div class="gauge" id="gauge-cpu">
+          <div class="gauge-label">CPU</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-cpu-fill"></div></div>
+          <div class="gauge-value" id="gauge-cpu-value">unknown</div>
+        </div>
+        <div class="gauge" id="gauge-ram">
+          <div class="gauge-label">RAM</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-ram-fill"></div></div>
+          <div class="gauge-value" id="gauge-ram-value">unknown</div>
+        </div>
+        <div class="gauge" id="gauge-vram">
+          <div class="gauge-label">VRAM</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-vram-fill"></div></div>
+          <div class="gauge-value" id="gauge-vram-value">unknown</div>
+        </div>
+      </section>
+
       <div id="profile-picker">
         <label for="profile-select">Local profile</label>
         <select id="profile-select">

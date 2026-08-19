@@ -94,6 +94,28 @@ function sessionStateClass(state) {
   return "bad";
 }
 
+function gaugeClass(pct) {
+  if (pct === null || pct === undefined) return "unknown";
+  if (pct < 70) return "ok";
+  if (pct < 90) return "warn";
+  return "bad";
+}
+
+function renderGauge(name, pct) {
+  const fill = el(`gauge-${name}-fill`);
+  const value = el(`gauge-${name}-value`);
+  const cls = gaugeClass(pct);
+  fill.className = `gauge-fill ${cls}`;
+  fill.style.width = (pct === null || pct === undefined ? 0 : pct) + "%";
+  value.textContent = pct === null || pct === undefined ? "unknown" : `${pct.toFixed(1)}%`;
+}
+
+function renderMetrics(metrics) {
+  renderGauge("cpu", metrics.cpu_pct);
+  renderGauge("ram", metrics.ram_pct);
+  renderGauge("vram", metrics.vram_pct);
+}
+
 async function poll() {
   const { status, body } = await apiGet("/api/status");
   if (status === 401 || status === 503) {
@@ -102,6 +124,9 @@ async function poll() {
   }
   showTokenGate(false);
   if (body) render(body);
+
+  const metrics = await apiGet("/api/metrics");
+  if (metrics.body) renderMetrics(metrics.body);
 }
 
 async function onProfileChange() {

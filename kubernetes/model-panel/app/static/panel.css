@@ -40,3 +40,41 @@ body {
 }
 
 #token-gate input { padding: 0.4rem; margin-right: 0.5rem; }
+
+#metrics {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.gauge { flex: 1; min-width: 0; }
+
+.gauge-label {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.gauge-bar {
+  background: #eee;
+  border-radius: 0.5rem;
+  height: 0.6rem;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  height: 100%;
+  width: 0%;
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+.gauge-fill.ok { background: #4caf7d; }
+.gauge-fill.warn { background: #f0c419; }
+.gauge-fill.bad { background: #d9534f; }
+.gauge-fill.unknown { background: #bbb; }
+
+.gauge-value {
+  font-size: 0.8rem;
+  color: #444;
+  margin-top: 0.15rem;
+}

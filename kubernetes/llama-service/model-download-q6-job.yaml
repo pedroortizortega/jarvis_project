@@ -1,0 +1,87 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-qwen36-27b-ud-q6-k-xl
+  namespace: llms
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 21600
+  template:
+    metadata:
+      labels:
+        app: llama-model-download-q6
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        workload: llm
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: llm
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: download
+          image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+
+              target="/models/Qwen3.6-27B-UD-Q6_K_XL.gguf"
+              partial="${target}.partial"
+              expected_size="25636485344"
+              expected_sha="8746881d40f280b1b6b858c656a347c754ed3d9cc8d2e1ad46b3635b87f611f8"
+              url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-UD-Q6_K_XL.gguf?download=true"
+
+              if [ -f "$target" ] &&
+                 [ "$(wc -c < "$target" | tr -d ' ')" = "$expected_size" ] &&
+                 echo "$expected_sha  $target" | sha256sum -c -; then
+                echo "Model already present and verified."
+                exit 0
+              fi
+
+              # A corrupt target has no rollback value and retaining it would
+              # require space for two complete 25.6 GB files during recovery.
+              rm -f "$target" "$partial"
+              curl --fail --location --retry 5 --retry-all-errors \
+                --connect-timeout 30 --output "$partial" "$url"
+
+              test "$(wc -c < "$partial" | tr -d ' ')" = "$expected_size"
+              echo "$expected_sha  $partial" | sha256sum -c -
+              mv "$partial" "$target"
+              echo "$expected_sha  $target" | sha256sum -c -
+              echo "$expected_sha  $(basename "$target")" > "${target}.sha256"
+              echo "Model downloaded and verified: $target"
+          env:
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models-q6

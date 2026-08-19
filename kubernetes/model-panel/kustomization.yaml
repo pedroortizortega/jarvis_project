@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - rbac.yaml
+  - state-configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - node-exporter.yaml
+  - node-exporter-service.yaml
+  - gpu-exporter.yaml
+  - gpu-exporter-service.yaml
+  - tlsoption.yaml
+  - ingress.yaml

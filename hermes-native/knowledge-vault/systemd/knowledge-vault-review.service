@@ -1,0 +1,41 @@
+[Unit]
+Description=Knowledge vault review projector and decision importer
+Documentation=file:///opt/knowledge-vault/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=knowledge-vault-review
+Group=knowledge-vault
+WorkingDirectory=/opt/knowledge-vault
+Environment=KNOWLEDGE_VAULT_PROPOSAL_SPOOL=/var/lib/knowledge-vault/proposals
+Environment=KNOWLEDGE_VAULT_PENDING_DIR=/var/lib/knowledge-vault/pending
+Environment=KNOWLEDGE_VAULT_DECISIONS_DIR=/var/lib/knowledge-vault/decisions
+ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-review
+
+# Review owns the Obsidian-visible pending area and the decision export only.
+# It must never reach the canonical vault: that is the publisher's alone.
+ReadWritePaths=/var/lib/knowledge-vault/pending /var/lib/knowledge-vault/decisions
+ReadOnlyPaths=/var/lib/knowledge-vault/proposals
+InaccessiblePaths=/opt/knowledge-vault/vault
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# 0007, not 0027: the human reviewer writes the decision inside the projected
+# file, so pending files must be group-writable for the knowledge-vault group.
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target

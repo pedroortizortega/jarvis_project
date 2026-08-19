@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local project credentials and embedded source checkouts
+.claude/config.txt
+kubernetes/docker/hermes-agent/

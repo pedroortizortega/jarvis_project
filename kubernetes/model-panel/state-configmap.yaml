@@ -1,0 +1,17 @@
+# Seed for `model-panel-state` (D6, write-ahead claim). The panel patches
+# this ConfigMap on every mutating step; this manifest only seeds the
+# initial default so the very first `GET /api/status` / `StateStore.read()`
+# does not have to special-case a missing ConfigMap (StateStore.read()
+# already tolerates a 404 by returning a fresh HandoffState(), but shipping
+# the ConfigMap declaratively keeps `kubectl diff`/GitOps happy and makes
+# the RBAC's `patch`/`update`-only — no `create` — verb list correct: the
+# panel's Role deliberately never has `create` on configmaps, only
+# `patch`/`update` on this named object).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-panel-state
+  namespace: llms
+data:
+  state.json: |
+    {"mode": "local", "profile": "daily", "phase": "idle", "target": null, "transition_id": null, "error": null, "updated_at": null, "last_known_good": null}

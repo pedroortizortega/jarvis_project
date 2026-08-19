@@ -1,0 +1,59 @@
+# deployment.yaml
+# Proposal API control plane. Scaled to 0 until the datastore and API image are
+# selected (see openspec/changes/approved-knowledge-vault/design.md, Open Questions).
+# It is NOT a second Hermes gateway: it holds no Telegram token and serves only
+# the proposal/decision/approved endpoints.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-proposals-api
+  namespace: knowledge-proposals
+spec:
+  replicas: 0
+  strategy:
+    # Recreate, never RollingUpdate: the state PVC is ReadWriteOnce on a
+    # node-bound local-path volume and SQLite allows a single writer, so a
+    # second pod would deadlock waiting for the volume.
+    type: Recreate
+  selector: {matchLabels: {app: knowledge-proposals-api}}
+  template:
+    metadata: {labels: {app: knowledge-proposals-api}}
+    spec:
+      # No hostNetwork, no hostPath, and no canonical-vault volume: the cluster
+      # must not be able to reach or mutate the host vault.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: knowledge-proposals-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: knowledge-proposals-config}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: state, mountPath: /var/lib/proposals}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 5
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: state
+          persistentVolumeClaim:
+            claimName: knowledge-proposals-state

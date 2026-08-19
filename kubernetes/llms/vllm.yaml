@@ -1,0 +1,73 @@
+# vllm.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-models
+  namespace: llms
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 200Gi   # ajusta al espacio libre real en el disco del PC
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: llms
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      nodeSelector:
+        workload: llm
+      priorityClassName: llm-default
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          env:
+            - name: VLLM_TRITON_FORCE_FIRST_CONFIG
+              value: "1"   # mitigación para bug abierto de vLLM (#36598) + Triton (#9939): en GPUs no-SM90 (nuestra RTX 4070 es SM89), las capas GDN de Qwen3.5 disparan un autotuner Triton que se queda sin VRAM libre para el benchmarking (ya reservada para KV-cache) y crashea el EngineCore sin traceback capturable. Esto salta el benchmarking y usa la primera config válida — no es un fix oficial, reduce el riesgo pero no lo elimina del todo (ver troubleshooting en spec 001)
+          args:
+            - "--model=QuantTrio/Qwen3.5-9B-AWQ"
+            - "--quantization=awq"
+            - "--trust-remote-code"   # recomendado por el model card para este checkpoint
+            - "--language-model-only"   # Qwen3.5-9B es multimodal nativo (trae encoder de visión); Hermes solo usa texto. Sin este flag vLLM carga y perfila el encoder de imagen igual, gastando VRAM real (confirmado en logs: "Encoder cache... profiled with 1 image items") que hace falta para el KV-cache
+            - "--max-model-len=98304"   # Qwen3.5-9B soporta 262144 nativos SIN YaRN, pero a 131072 no alcanza el KV-cache real (12.4GB de pesos + resto de VRAM compartida con el desktop): vLLM reportó un máximo real de ~104016 tokens con --language-model-only + 0.90 de utilización. 98304 deja margen de seguridad y sigue siendo más que suficiente para el system prompt de Hermes (~18-25k) + max_tokens=65536 fijo (~90k en el peor caso). IMPORTANTE: si se cambia este valor, actualizar también `model.context_length` en Hermes (spec 002, Fase 2.2) para que coincidan — un desajuste entre ambos causa el mismo loop de ContextWindowExceededError que ya se resolvió antes.
+            - "--gpu-memory-utilization=0.90"   # este AWQ pesa ~12.4GB de pesos (vs ~4-5GB del modelo anterior); con 0.80 no queda margen real para el KV-cache a 131072 tokens. Con 0.90 sí. Contra: menos margen si la GPU se usa para otra cosa a la vez (ver limitación conocida en A8)
+            - "--max-num-seqs=3"        # subido de 1: con 1, cualquier tarea interna de Hermes (title generation, memory nudge, etc.) compite por el único slot con la conversación principal y todo se serializa — si una queda colgada, bloquea al resto. Con 3 corren en paralelo sin taparse. No multiplica el presupuesto de KV-cache (es admisión del scheduler, no una reserva fija por secuencia), pero sí vale la pena vigilar el "Waiting: N reqs" en los logs si vuelve a acumularse
+            - "--enforce-eager"
+            - "--served-model-name=qwen3"   # nombre que verán los clientes del gateway
+            - "--enable-auto-tool-choice"   # requerido para que clientes (Hermes) puedan usar tool_choice=auto
+            - "--tool-call-parser=qwen3_coder"   # parser recomendado por el model card de QuantTrio/Qwen3.5-9B-AWQ para este modelo (hermes era el correcto para el Qwen2.5-7B viejo, no para este)
+            - "--reasoning-parser=qwen3"   # Qwen3.5 opera en modo "thinking" por defecto; sin este parser el razonamiento se mezcla con la respuesta final en vez de separarse
+          ports: [{containerPort: 8000}]
+          volumeMounts:
+            - {name: models, mountPath: /root/.cache/huggingface}
+          resources:
+            requests: {cpu: "4", memory: 8Gi}
+            limits:
+              memory: 16Gi       # ajusta a la RAM real del PC
+              nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 60
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vllm-models}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: llms
+spec:
+  selector: {app: vllm}
+  ports: [{port: 8000, targetPort: 8000}]
+  type: ClusterIP

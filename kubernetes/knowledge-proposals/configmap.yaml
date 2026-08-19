@@ -1,0 +1,21 @@
+# configmap.yaml
+# Control-plane settings for the proposal API. It owns proposal, approval,
+# lineage, and audit state only — never canonical-vault content.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knowledge-proposals-config
+  namespace: knowledge-proposals
+data:
+  # The API is a control plane: it must refuse any request that would write
+  # published notes. The canonical vault lives on the host and is written
+  # exclusively by the knowledge-vault-publisher systemd unit.
+  vault_write_enabled: "false"
+  # Approved records are exported for the host publisher to pull; the cluster
+  # never pushes into the vault.
+  approved_export_enabled: "true"
+  # SQLite on a node-bound local-path PVC. Chosen over a dedicated database
+  # because the cluster runs none and proposal volume is tens per day.
+  database_url: "sqlite:////var/lib/proposals/proposals.db"
+  listen_port: "8080"
+  log_level: "info"

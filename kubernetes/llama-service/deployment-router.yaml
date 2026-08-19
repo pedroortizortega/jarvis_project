@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-router
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: llama-router
+    app.kubernetes.io/part-of: local-llm-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llama-router
+  template:
+    metadata:
+      labels:
+        app: llama-router
+        app.kubernetes.io/name: llama-server
+        app.kubernetes.io/instance: daily-large-router
+        app.kubernetes.io/part-of: local-llm-platform
+        model.huggingface.co/source: hub
+        model.huggingface.co/base-model-official: "true"
+      annotations:
+        model.huggingface.co/repositories: unsloth/Qwen3.5-9B-GGUF,unsloth/Qwen3.6-27B-GGUF
+        model.huggingface.co/base-models: Qwen/Qwen3.5-9B,Qwen/Qwen3.6-27B
+        model.huggingface.co/tags: base_model:Qwen,base_model:quantized:Qwen
+    spec:
+      automountServiceAccountToken: false
+      runtimeClassName: nvidia
+      enableServiceLinks: false
+      priorityClassName: llm-priority
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        workload: llm
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: llm
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: llama-router
+          image: ghcr.io/ggml-org/llama.cpp:server-cuda-b10156@sha256:4c0ece468721077a8bff8c114f8b0a92a8604ed310c91939fadfe37595a53b9e
+          imagePullPolicy: IfNotPresent
+          args:
+            - --models-preset
+            - /config/models.ini
+            - --models-max
+            - "1"
+            - --models-autoload
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+            - --api-key-file
+            - /run/secrets/llama/api-key
+            - --no-ui
+            - --slots
+          env:
+            - name: HOME
+              value: /tmp
+            - name: CUDA_CACHE_PATH
+              value: /tmp/cuda-cache
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "8"
+              memory: 16Gi
+            limits:
+              cpu: "24"
+              memory: 32Gi
+              nvidia.com/gpu: "1"
+          startupProbe:
+            httpGet:
+              path: /health?model=qwen3.5-9b&autoload=false
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: daily-model
+              mountPath: /models/daily
+              readOnly: true
+            - name: large-model
+              mountPath: /models/large
+              readOnly: true
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: auth
+              mountPath: /run/secrets/llama
+              readOnly: true
+      volumes:
+        - name: daily-model
+          persistentVolumeClaim:
+            claimName: llama-models-daily
+        - name: large-model
+          persistentVolumeClaim:
+            claimName: llama-models-q3
+        - name: config
+          configMap:
+            name: llama-router-config
+        - name: tmp
+          emptyDir: {}
+        - name: auth
+          secret:
+            secretName: litellm-auth
+            items:
+              - key: llama-api-key
+                path: api-key
+            defaultMode: 0440

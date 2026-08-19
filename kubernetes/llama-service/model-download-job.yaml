@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-qwen36-27b-iq4-xs
+  namespace: llms
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 14400
+  template:
+    metadata:
+      labels:
+        app: llama-model-download
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        workload: llm
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: llm
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: download
+          image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+
+              target="/models/Qwen3.6-27B-IQ4_XS.gguf"
+              partial="${target}.partial"
+              expected_size="15440005344"
+              expected_sha="8a3365759dc1b33b52c4e7d91d5a67d5ee1418e8408aa54196f04a98da53e5dc"
+              url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/Qwen3.6-27B-IQ4_XS.gguf?download=true"
+
+              if [ -f "$target" ] &&
+                 [ "$(wc -c < "$target" | tr -d ' ')" = "$expected_size" ] &&
+                 echo "$expected_sha  $target" | sha256sum -c -; then
+                echo "Model already present and verified."
+                exit 0
+              fi
+
+              rm -f "$partial"
+              curl --fail --location --retry 5 --retry-all-errors \
+                --connect-timeout 30 --output "$partial" "$url"
+
+              test "$(wc -c < "$partial" | tr -d ' ')" = "$expected_size"
+              echo "$expected_sha  $partial" | sha256sum -c -
+              mv "$partial" "$target"
+              echo "$expected_sha  $target" | sha256sum -c -
+              echo "$expected_sha  $(basename "$target")" > "${target}.sha256"
+              echo "Model downloaded and verified: $target"
+          env:
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models

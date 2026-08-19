@@ -1,0 +1,70 @@
+# vllm-small-model.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-small-model
+  namespace: llms
+spec:
+  replicas: 1   # KEDA sobreescribe esto dinámicamente (0 cuando no hay tráfico)
+  selector:
+    matchLabels: {app: vllm-small-model}
+  template:
+    metadata:
+      labels: {app: vllm-small-model}
+    spec:
+      nodeSelector:
+        workload: llm
+      priorityClassName: llm-priority
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model=Qwen/Qwen3.5-9B"   # ej. Qwen/Qwen3.5-9B-Instruct-AWQ, confirmar nombre exacto en HF
+            - "--quantization=awq"
+            - "--max-model-len=16384"          # margen amplio de VRAM disponible para este tamaño
+            - "--gpu-memory-utilization=0.90"
+            - "--served-model-name=qwen3.5-9b"
+          ports: [{containerPort: 8000}]
+          volumeMounts:
+            - {name: models, mountPath: /root/.cache/huggingface}
+          resources:
+            requests: {cpu: "2", memory: 4Gi}
+            limits:
+              memory: 12Gi
+              nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 45
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: vllm-models}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-small-model
+  namespace: llms
+spec:
+  selector: {app: vllm-small-model}
+  ports: [{port: 8000, targetPort: 8000}]
+  type: ClusterIP
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: vllm-small-model
+  namespace: llms
+spec:
+  hosts:
+    - vllm-small-model.llms.svc.cluster.local
+  scaleTargetRef:
+    name: vllm-small-model
+    kind: Deployment
+    apiVersion: apps/v1
+    service: vllm-small-model
+    port: 8000
+  replicas:
+    min: 0
+    max: 1
+  scaledownPeriod: 300

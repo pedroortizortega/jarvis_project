@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: node-exporter
+    app.kubernetes.io/part-of: gpu-handoff-web-panel
+spec:
+  type: ClusterIP
+  selector:
+    app: node-exporter
+  ports:
+    - name: http
+      port: 9100
+      targetPort: http

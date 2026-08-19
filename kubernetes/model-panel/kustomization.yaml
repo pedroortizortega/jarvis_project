@@ -5,5 +5,7 @@ resources:
   - state-configmap.yaml
   - deployment.yaml
   - service.yaml
+  - node-exporter.yaml
+  - node-exporter-service.yaml
   - tlsoption.yaml
   - ingress.yaml

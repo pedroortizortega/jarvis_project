@@ -23,6 +23,10 @@ spec:
       # class + env vars below, which is the exporter's own documented
       # way to avoid exclusively allocating the node's single GPU.
       runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: exporter
           image: utkuozdemir/nvidia_gpu_exporter:1.14.0

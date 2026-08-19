@@ -538,9 +538,12 @@ class OrchestrationRuntime:
         if not bool(config.get("audit_enabled", True)):
             return
         try:
-            from hermes_constants import get_hermes_home
+            audit_db = config.get("audit_db")
+            if not audit_db:
+                from hermes_constants import get_hermes_home
 
-            path = Path(str(config.get("audit_db") or get_hermes_home() / "orchestration" / "events.sqlite3"))
+                audit_db = get_hermes_home() / "orchestration" / "events.sqlite3"
+            path = Path(str(audit_db))
             path.parent.mkdir(parents=True, exist_ok=True)
             classification = asdict(decision.classification)
             with sqlite3.connect(path, timeout=5) as connection:

@@ -1,0 +1,11 @@
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: engram-mtls
+  namespace: engram
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    secretNames:
+      - engram-client-ca
+    clientAuthType: RequireAndVerifyClientCert

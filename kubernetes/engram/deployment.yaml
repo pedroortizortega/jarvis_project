@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engram-cloud
+  namespace: engram
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: engram-cloud
+  template:
+    metadata:
+      labels:
+        app: engram-cloud
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: engram
+          image: ghcr.io/gentleman-programming/engram:v1.20.0
+          imagePullPolicy: IfNotPresent
+          command: ["engram", "cloud", "serve"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ENGRAM_CLOUD_HOST
+              value: 0.0.0.0
+            - name: ENGRAM_PORT
+              value: "8080"
+          envFrom:
+            - secretRef:
+                name: engram-cloud-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

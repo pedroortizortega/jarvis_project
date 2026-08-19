@@ -47,7 +47,7 @@ Deployment usa:
 Esto reserva aproximadamente 4 GiB de margen VRAM y deja en RAM los pesos que
 no entren y el KV cache. Para 65,536 tokens, los 16 bloques de full attention
 requieren aproximadamente 4 GiB de KV F16 por slot, mas estado recurrente y
-buffers. El pod solicita 32 GiB de RAM y limita en 52 GiB. Con 62 GiB totales y
+buffers. El pod solicita 32 GiB de RAM y limita en 44 GiB. Con 62 GiB totales y
 aproximadamente 45 GiB disponibles al verificar, debe caber, pero el pico RSS y
 el numero efectivo de capas CUDA solo se conocen al cargar el archivo.
 
@@ -83,7 +83,6 @@ kubernetes/llama-service/service-q6.yaml
 El Job no solicita GPU:
 
 ```bash
-exec bash
 set -euo pipefail
 
 kubectl apply -k kubernetes/llama-service
@@ -112,16 +111,33 @@ quedar detenido:
 ```bash
 set -euo pipefail
 
+sudo systemctl stop hermes-gateway.service
 kubectl -n llms scale deployment/llama-server --replicas=0
 
-IQ4_PODS="$(kubectl -n llms get pods -l app=llama-server \
+IQ4_POD_NAMES="$(kubectl -n llms get pods -l app=llama-server \
   --field-selector='status.phase!=Succeeded,status.phase!=Failed' -o name)"
-if [[ -n "$IQ4_PODS" ]]; then
-  kubectl -n llms wait --for=delete $IQ4_PODS --timeout=5m
+IQ4_PODS=()
+if [[ -n "$IQ4_POD_NAMES" ]]; then
+  mapfile -t IQ4_PODS <<< "$IQ4_POD_NAMES"
+  kubectl -n llms wait --for=delete "${IQ4_PODS[@]}" --timeout=5m
 fi
 
-test "$(kubectl -n llms get deployment/vllm -o jsonpath='{.spec.replicas}')" = 0
-test "$(kubectl -n llms get deployment/llama-server -o jsonpath='{.spec.replicas}')" = 0
+for deployment in \
+  vllm vllm-big-model vllm-small-model llama-server llama-server-q3; do
+  test "$(kubectl -n llms get deployment/$deployment \
+    -o jsonpath='{.spec.replicas}')" = 0
+done
+for scaledobject in vllm-big-model vllm-small-model; do
+  test "$(kubectl -n llms get scaledobject.keda.sh/$scaledobject \
+    -o jsonpath='{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}')" = 0
+  test "$(kubectl -n llms get scaledobject.keda.sh/$scaledobject \
+    -o jsonpath='{.status.conditions[?(@.type=="Paused")].status}')" = True
+done
+VLLM_GPU_PODS="$(kubectl -n llms get pods \
+  -l 'app in (vllm,vllm-big-model,vllm-small-model)' \
+  --field-selector='status.phase!=Succeeded,status.phase!=Failed' \
+  -o name)"
+test -z "$VLLM_GPU_PODS"
 
 kubectl -n llms scale deployment/llama-server-q6 --replicas=1
 kubectl -n llms rollout status deployment/llama-server-q6 --timeout=45m
@@ -134,11 +150,13 @@ Validar en logs:
 - Contexto efectivo 65,536.
 - Numero efectivo de capas CUDA y memoria por backend.
 - Sin CUDA OOM, `unknown model architecture` ni OOMKilled.
-- RSS del pod por debajo del limite de 52 GiB.
+- RSS del pod por debajo del limite de 44 GiB.
 
 ## Publicar y probar
 
 ```bash
+set -euo pipefail
+
 kubectl apply -f kubernetes/proxy/litellm-config.yaml
 kubectl -n llms rollout restart deployment/litellm
 kubectl -n llms rollout status deployment/litellm --timeout=5m
@@ -147,28 +165,58 @@ read -rsp 'LiteLLM API key: ' LITELLM_API_KEY
 echo
 LITELLM_IP="$(kubectl -n llms get service/litellm \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+INVALID_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  -H 'Authorization: Bearer definitely-invalid' \
+  "http://$LITELLM_IP:4000/v1/models")"
+case "$INVALID_STATUS" in
+  400|401|403) ;;
+  *) printf 'ERROR: LiteLLM invalid-key status=%s\n' "$INVALID_STATUS" >&2; exit 1 ;;
+esac
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $LITELLM_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"qwen3.6-27b-q6","messages":[{"role":"user","content":"Responde exactamente OK"}],"max_tokens":32}' \
   "http://$LITELLM_IP:4000/v1/chat/completions"
-unset LITELLM_API_KEY LITELLM_IP
+unset LITELLM_API_KEY LITELLM_IP INVALID_STATUS
 ```
 
-Para Hermes, cambiar `model.default` a `qwen3.6-27b-q6`; el contexto y output
-siguen en 65,536 y 16,384 respectivamente.
+Cambiar Hermes con el gateway detenido; el contexto y output siguen en 65,536
+y 16,384 respectivamente. Mantener el override de contexto auxiliar porque
+LiteLLM anuncia por separado 49,152 tokens de input y 16,384 de output:
+
+```bash
+hermes config set auxiliary.compression.context_length 65536
+hermes config set auxiliary.compression.timeout 1800
+hermes config set auxiliary.title_generation.timeout 300
+hermes config set model.default qwen3.6-27b-q6
+sudo systemctl start hermes-gateway.service
+hermes -z 'Responde exactamente: OK'
+```
 
 ## Volver a IQ4_XS
 
 ```bash
+set -euo pipefail
+
+sudo systemctl stop hermes-gateway.service
 kubectl -n llms scale deployment/llama-server-q6 --replicas=0
-kubectl -n llms wait --for=delete pod -l app=llama-server-q6 --timeout=5m
+Q6_POD_NAMES="$(kubectl -n llms get pods -l app=llama-server-q6 \
+  --field-selector='status.phase!=Succeeded,status.phase!=Failed' -o name)"
+Q6_PODS=()
+if [[ -n "$Q6_POD_NAMES" ]]; then
+  mapfile -t Q6_PODS <<< "$Q6_POD_NAMES"
+  kubectl -n llms wait --for=delete "${Q6_PODS[@]}" --timeout=5m
+fi
 kubectl -n llms scale deployment/llama-server --replicas=1
 kubectl -n llms rollout status deployment/llama-server --timeout=35m
+hermes config set model.default qwen3.6-27b
+sudo systemctl start hermes-gateway.service
+hermes -z 'Responde exactamente: OK'
 ```
 
 No borrar ninguno de los PVC durante el cambio. Para volver a vLLM, usar el
-rollback del spec 005 y reanudar KEDA solo despues de que vLLM este Ready.
+rollback actualizado del spec 005, que detiene IQ4 y Q6, y reanudar KEDA solo
+despues de que vLLM este Ready.
 
 ## Limitaciones
 

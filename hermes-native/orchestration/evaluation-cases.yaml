@@ -1,0 +1,407 @@
+version: 1
+cases:
+  - id: chat-001
+    input: "Hello, how are you?"
+    expected_route: local
+  - id: chat-002
+    input: "Hola, ¿cómo estás?"
+    expected_route: local
+  - id: chat-003
+    input: "Explain recursion in simple terms."
+    expected_route: local
+  - id: chat-004
+    input: "Cuéntame un chiste corto."
+    expected_route: local
+  - id: chat-005
+    input: "Thanks for your help."
+    expected_route: local
+  - id: chat-006
+    input: "Traduce esta oración al inglés."
+    expected_route: local
+  - id: chat-007
+    input: "What is the capital of France?"
+    expected_route: local
+  - id: chat-008
+    input: "Dame tres ideas para una cena sencilla."
+    expected_route: local
+  - id: chat-009
+    input: "Summarize this paragraph in one sentence."
+    expected_route: local
+  - id: chat-010
+    input: "Explícame la fotosíntesis de forma sencilla."
+    expected_route: local
+  - id: chat-011
+    input: "Choose automatically and tell me a bedtime story."
+    expected_route: local
+  - id: chat-012
+    input: "Elige automáticamente y salúdame."
+    expected_route: local
+
+  - id: lookup-001
+    input: "What is the weather today in Madrid?"
+    expected_route: luna-low
+  - id: lookup-002
+    input: "¿Cuál es el precio actual del euro?"
+    expected_route: luna-low
+  - id: lookup-003
+    input: "Give me the current stable release of PostgreSQL."
+    expected_route: luna-low
+  - id: lookup-004
+    input: "Who won the match? Include sources."
+    expected_route: luna-low
+  - id: lookup-005
+    input: "Busca el horario del museo mañana."
+    expected_route: luna-low
+  - id: lookup-006
+    input: "What is the current exchange rate for USD to EUR?"
+    expected_route: luna-low
+  - id: lookup-007
+    input: "Find out who is the mayor of Valencia."
+    expected_route: luna-low
+  - id: lookup-008
+    input: "Dime la población de Chile con citas."
+    expected_route: luna-low
+  - id: lookup-009
+    input: "Share links for the Python documentation."
+    expected_route: luna-low
+  - id: lookup-010
+    input: "¿Qué tiempo hace hoy en Sevilla?"
+    expected_route: luna-low
+  - id: lookup-011
+    input: "Noticias destacadas de esta semana."
+    expected_route: luna-low
+  - id: lookup-012
+    input: "Population estimate for Japan in 2026."
+    expected_route: luna-low
+  - id: lookup-013
+    input: "What is the weatherr in Lisbon?"
+    expected_route: luna-low
+  - id: lookup-014
+    input: "¿Cuál es el presio del oro hoy?"
+    expected_route: luna-low
+  - id: lookup-015
+    input: "Lookup the population of Canada."
+    expected_route: luna-low
+  - id: lookup-016
+    input: "What is happening in the markets now?"
+    expected_route: luna-low
+
+  - id: research-001
+    input: "Investiga la historia del ajedrez."
+    expected_route: luna-low
+  - id: research-002
+    input: "Research the origins of the printing press."
+    expected_route: luna-low
+  - id: research-003
+    input: "Investiga por qué migran las aves."
+    expected_route: luna-low
+  - id: research-004
+    input: "Research the causes of the Bronze Age collapse."
+    expected_route: luna-low
+  - id: research-005
+    input: "Investigaar la evolución del tango."
+    expected_route: luna-low
+  - id: research-006
+    input: "Researchh how coral reefs form."
+    expected_route: luna-low
+  - id: research-007
+    input: "Investiga datos actuales sobre energía solar."
+    expected_route: luna-high
+  - id: research-008
+    input: "Research current battery recycling methods."
+    expected_route: luna-high
+  - id: research-009
+    input: "Analiza fuentes sobre la educación bilingüe."
+    expected_route: luna-high
+  - id: research-010
+    input: "Compare sources about urban heat islands."
+    expected_route: luna-high
+  - id: research-011
+    input: "Investiga la sequía e incluye referencias."
+    expected_route: luna-high
+  - id: research-012
+    input: "Research semiconductor news from this week."
+    expected_route: luna-high
+  - id: research-013
+    input: "Investiga las tendencias de robótica en 2026."
+    expected_route: luna-high
+  - id: research-014
+    input: "Research language learning outcomes with citations."
+    expected_route: luna-high
+
+  - id: deep-research-001
+    input: "Do deep research on carbon capture technologies."
+    expected_route: sol-high
+  - id: deep-research-002
+    input: "Haz una investigación profunda sobre la vivienda pública."
+    expected_route: sol-high
+  - id: deep-research-003
+    input: "Investiga a fondo la cadena de suministro de litio."
+    expected_route: sol-high
+  - id: deep-research-004
+    input: "Deep research the history of monetary unions."
+    expected_route: sol-high
+  - id: deep-research-005
+    input: "Investigación profunda con fuentes sobre microplásticos."
+    expected_route: sol-high
+  - id: deep-research-006
+    input: "Investiga a fondo los modelos de lenguaje abiertos."
+    expected_route: sol-high
+  - id: deep-research-007
+    input: "Deep research current desalination projects."
+    expected_route: sol-high
+  - id: deep-research-008
+    input: "Necesito investigación profunda y citas sobre vacunas."
+    expected_route: sol-high
+  - id: deep-research-009
+    input: "Investiga a fondo este tema y compara resultados."
+    expected_route: sol-high
+  - id: deep-research-010
+    input: "Deep research this week’s satellite launches."
+    expected_route: sol-high
+  - id: deep-research-011
+    input: "Haz investigacion profunda sobre redes eléctricas."
+    expected_route: sol-high
+  - id: deep-research-012
+    input: "Please investiga a fondo the economics of fusion power."
+    expected_route: sol-high
+
+  - id: coding-001
+    input: "Fix the bug in this parser."
+    expected_route: local
+  - id: coding-002
+    input: "Escribe código para ordenar una lista."
+    expected_route: local
+  - id: coding-003
+    input: "Debug this function."
+    expected_route: local
+  - id: coding-004
+    input: "Corrige el typo de esta variable."
+    expected_route: local
+  - id: coding-005
+    input: "Add a test for the empty input case."
+    expected_route: local
+  - id: coding-006
+    input: "Refactor this helper to be clearer."
+    expected_route: local
+  - id: coding-007
+    input: "Create an API endpoint for health checks."
+    expected_route: local
+  - id: coding-008
+    input: "Arregla esta función que suma mal."
+    expected_route: local
+  - id: coding-009
+    input: "Implementa un parser para este formato."
+    expected_route: luna-high
+  - id: coding-010
+    input: "Implement an in-memory cache."
+    expected_route: luna-high
+  - id: coding-011
+    input: "Fix this bug across multiple files."
+    expected_route: luna-high
+  - id: coding-012
+    input: "Corrige el fallo en varios archivos."
+    expected_route: luna-high
+  - id: coding-013
+    input: "Compare two implementations of this function."
+    expected_route: luna-high
+  - id: coding-014
+    input: "Implementaar soporte para CSV."
+    expected_route: luna-high
+  - id: coding-015
+    input: "Do a large refactor of the authentication code."
+    expected_route: terra-medium
+  - id: coding-016
+    input: "Diseña la arquitectura y escribe el código del servicio."
+    expected_route: terra-medium
+  - id: coding-017
+    input: "Fix this production bug in the payment function."
+    expected_route: terra-medium
+  - id: coding-018
+    input: "Fix the security bug in this API endpoint."
+    expected_route: terra-medium
+
+  - id: review-001
+    input: "Review this function for correctness."
+    expected_route: luna-high
+  - id: review-002
+    input: "Revisa este código antes de enviarlo."
+    expected_route: luna-high
+  - id: review-003
+    input: "Audit this small module."
+    expected_route: luna-high
+  - id: review-004
+    input: "Do a code review of this patch."
+    expected_route: luna-high
+  - id: review-005
+    input: "Audita estas pruebas unitarias."
+    expected_route: luna-high
+  - id: review-006
+    input: "Revieww this function for mistakes."
+    expected_route: luna-high
+  - id: review-007
+    input: "Review the changes across multiple files."
+    expected_route: luna-high
+  - id: review-008
+    input: "Revisa el cambio en varios archivos."
+    expected_route: luna-high
+  - id: review-009
+    input: "Audit this implementation and its tests."
+    expected_route: luna-high
+  - id: review-010
+    input: "Review the architecture of this codebase."
+    expected_route: terra-medium
+  - id: review-011
+    input: "Audit this security-sensitive module."
+    expected_route: terra-medium
+  - id: review-012
+    input: "Revisa la migración de la base de datos."
+    expected_route: terra-medium
+  - id: review-013
+    input: "Perform a critical code review of this service."
+    expected_route: terra-medium
+  - id: review-014
+    input: "Review this production configuration change."
+    expected_route: terra-medium
+
+  - id: incident-001
+    input: "Investigate the incident affecting the API."
+    expected_route: terra-high
+  - id: incident-002
+    input: "Tenemos un incidente con la base de datos."
+    expected_route: terra-high
+  - id: incident-003
+    input: "The checkout service has an outage."
+    expected_route: terra-high
+  - id: incident-004
+    input: "Production down after the deployment."
+    expected_route: terra-high
+  - id: incident-005
+    input: "Producción caída desde el último cambio."
+    expected_route: terra-high
+  - id: incident-006
+    input: "Incidente: el servicio está caído."
+    expected_route: terra-high
+  - id: incident-007
+    input: "Handle the security incident in authentication."
+    expected_route: terra-high
+  - id: incident-008
+    input: "There is an outagee in the queue workers."
+    expected_route: terra-high
+  - id: incident-009
+    input: "Analiza el incidente de producción."
+    expected_route: terra-high
+  - id: incident-010
+    input: "Production down now; debug the API."
+    expected_route: terra-high
+
+  - id: profile-override-001
+    input: "Use luna-low for this answer."
+    expected_route: luna-low
+  - id: profile-override-002
+    input: "Usa luna-medium para responder."
+    expected_route: luna-medium
+  - id: profile-override-003
+    input: "Utiliza luna-high para la búsqueda."
+    expected_route: luna-high
+  - id: profile-override-004
+    input: "Responde con terra-low."
+    expected_route: terra-low
+  - id: profile-override-005
+    input: "Route to terra-medium for this code review."
+    expected_route: terra-medium
+  - id: profile-override-006
+    input: "Ruta a terra-high para investigar el incidente."
+    expected_route: terra-high
+  - id: profile-override-007
+    input: "Use sol-low and explain recursion."
+    expected_route: sol-low
+  - id: profile-override-008
+    input: "Usa sol-medium para investigar esto."
+    expected_route: sol-medium
+  - id: profile-override-009
+    input: "sol-high: deep research this topic."
+    expected_route: sol-high
+  - id: profile-override-010
+    input: "Do deep research but use terra-low."
+    expected_route: terra-low
+  - id: profile-override-011
+    input: "Implement the production fix with luna-low."
+    expected_route: luna-low
+  - id: profile-override-012
+    input: "Use sol-high with the local large model."
+    expected_route: sol-high
+
+  - id: local-only-001
+    input: "No cloud: find the latest value in this text."
+    expected_route: local
+  - id: local-only-002
+    input: "Sin nube, investiga este resumen."
+    expected_route: local
+  - id: local-only-003
+    input: "No enviar a la nube; haz deep research sobre el documento."
+    expected_route: local
+  - id: local-only-004
+    input: "This is a private document; use sol-high to review it."
+    expected_route: local
+  - id: local-only-005
+    input: "Documento privado: implementa los cambios."
+    expected_route: local
+  - id: local-only-006
+    input: "My passwords must stay private; route to terra-high."
+    expected_route: local
+  - id: local-only-007
+    input: "Mis contraseñas: investiga a fondo pero solo local."
+    expected_route: local
+  - id: local-only-008
+    input: "Personal data, find the current address without cloud access."
+    expected_route: local
+  - id: local-only-009
+    input: "Datos personales relacionados con este incidente."
+    expected_route: local
+  - id: local-only-010
+    input: "My credentials require qwen 27b."
+    expected_route: local_large
+  - id: local-only-011
+    input: "Mis credenciales, usa el modelo local 27b."
+    expected_route: local_large
+  - id: local-only-012
+    input: "Solo local: use luna-high and local_large."
+    expected_route: local_large
+
+  - id: local-large-001
+    input: "Use local_large for this task."
+    expected_route: local_large
+  - id: local-large-002
+    input: "Run this with the local large model."
+    expected_route: local_large
+  - id: local-large-003
+    input: "Use qwen 27b to answer."
+    expected_route: local_large
+  - id: local-large-004
+    input: "Route this to qwen3.6-27b."
+    expected_route: local_large
+  - id: local-large-005
+    input: "Usa el modelo local 27b."
+    expected_route: local_large
+  - id: local-large-006
+    input: "Deep research this topic with qwen 27b."
+    expected_route: local_large
+  - id: local-large-007
+    input: "Implement the complete architecture on local_large."
+    expected_route: local_large
+  - id: local-large-008
+    input: "Review this code using local large."
+    expected_route: local_large
+  - id: local-large-009
+    input: "LOCAL_LARGE, please explain this concept."
+    expected_route: local_large
+  - id: local-large-010
+    input: "Use the local large model for a long answer."
+    expected_route: local_large
+  - id: local-large-011
+    input: "Use qwen 27b for current sources on this topic."
+    expected_route: local_large
+  - id: local-large-012
+    input: "Modelo local 27b para analizar el incidente."
+    expected_route: local_large

@@ -173,15 +173,27 @@ class EngramBackend:
                     "topic_key_prefix": self._topic_key(req.namespace),
                 },
             )
+            hits = tuple(
+                self._hit_with_full_content(client, req, item)
+                for item in result.get("results", [])
+            )
         finally:
             client.close()
-        hits = tuple(
-            SearchHit(
-                namespace=req.namespace,
-                backend="engram",
-                content=item.get("content", ""),
-                score=float(item.get("score", 0.0)),
-            )
-            for item in result.get("results", [])
-        )
         return SearchResult(hits=hits)
+
+    def _hit_with_full_content(self, client: "_StdioRpcClient", req: SearchRequest, item: dict) -> SearchHit:
+        # mem_search returns only Engram's truncated preview text. Follow up
+        # with mem_get_observation per result so search results carry full,
+        # untruncated content (design.md: "search -> mem_search +
+        # mem_get_observation").
+        content = item.get("content", "")
+        observation_id = item.get("id")
+        if observation_id:
+            observation = client.call_tool("mem_get_observation", {"id": observation_id})
+            content = observation.get("content", content)
+        return SearchHit(
+            namespace=req.namespace,
+            backend="engram",
+            content=content,
+            score=float(item.get("score", 0.0)),
+        )

@@ -158,6 +158,68 @@ class EngramAdapterDegradationTests(unittest.TestCase):
             backend.search(SearchRequest(namespace="/global", role="jarvis", query="q"))
 
 
+class MultiResponseProcess:
+    """Fake subprocess that returns one queued JSON-RPC response per
+    readline() call, and records every written request in order — used to
+    assert the mem_search -> mem_get_observation call sequence."""
+
+    def __init__(self, responses, written):
+        self._responses = list(responses)
+        self._written = written
+        self.stdin = self
+        self.stdout = self
+
+    def write(self, data):
+        self._written.append(json.loads(data))
+
+    def flush(self):
+        pass
+
+    def readline(self):
+        payload = self._responses.pop(0)
+        return json.dumps(payload) + "\n"
+
+    def terminate(self):
+        pass
+
+
+class EngramAdapterFullContentTests(unittest.TestCase):
+    def test_search_calls_mem_get_observation_for_full_content(self):
+        written = []
+        responses = [
+            {"id": 1, "result": {"results": [{"id": "obs-1", "content": "preview", "score": 0.9}]}},
+            {"id": 2, "result": {"content": "full untruncated content"}},
+        ]
+        backend = EngramBackend(spawn=lambda argv, env: MultiResponseProcess(responses, written))
+
+        result = backend.search(
+            SearchRequest(namespace="/global", role="jarvis", query="deploy")
+        )
+
+        self.assertEqual(1, len(result.hits))
+        self.assertEqual("full untruncated content", result.hits[0].content)
+
+        called_tools = [request["params"]["name"] for request in written]
+        self.assertEqual(["mem_search", "mem_get_observation"], called_tools)
+        self.assertEqual("obs-1", written[1]["params"]["arguments"]["id"])
+
+    def test_search_skips_mem_get_observation_when_result_has_no_id(self):
+        written = []
+        responses = [
+            {"id": 1, "result": {"results": [{"content": "preview only", "score": 0.5}]}},
+        ]
+        backend = EngramBackend(spawn=lambda argv, env: MultiResponseProcess(responses, written))
+
+        result = backend.search(
+            SearchRequest(namespace="/global", role="jarvis", query="deploy")
+        )
+
+        self.assertEqual(1, len(result.hits))
+        self.assertEqual("preview only", result.hits[0].content)
+        called_tools = [request["params"]["name"] for request in written]
+        self.assertEqual(["mem_search"], called_tools)
+
+
 class EngramAdapterBehaviorTests(unittest.TestCase):
     def test_store_returns_committed_result_on_success(self):
         backend = EngramBackend(

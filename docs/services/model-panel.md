@@ -149,6 +149,15 @@ graph LR
     click Render "../../kubernetes/model-panel/app/static/panel.js" "panel.js renderGauge()"
 ```
 
+These node links are confirmed working in local renders and in editors
+whose Mermaid preview runs with a permissive security level (e.g. VS
+Code's Mermaid preview extensions). They're confirmed **not** working on
+github.com — GitHub's Content Security Policy blocks the navigation
+outright, a long-standing, unresolved platform limitation (see
+[github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
+On GitHub, the [GPU handoff link table](#how-gpu-handoff-works) above the
+first diagram already gives you the guaranteed-clickable path.
+
 **The GPU exporter deliberately never requests the `nvidia.com/gpu`
 Kubernetes resource.** That resource is the same discrete unit the entire
 handoff mechanism above manages — if the exporter requested it, it would

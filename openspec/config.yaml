@@ -1,0 +1,47 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.11+ setuptools plugin under hermes-native/orchestration.
+  Runtime deployment: Kubernetes manifests under kubernetes/.
+  Testing: unittest unit tests; no integration, E2E, coverage, or quality-tool configuration detected.
+  Specifications: numbered Markdown files live under specs/.
+  Existing active OpenSpec change: add-k3s-replicas; preserve its artifacts unless explicitly continued.
+
+strict_tdd: true
+
+testing:
+  test_command: python -m unittest discover -s tests
+  test_runner: unittest
+  layers:
+    unit: true
+    integration: false
+    e2e: false
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter: ""
+    type_checker: ""
+    formatter: ""
+
+rules:
+  proposal:
+    - Keep proposals scoped to one change and include rollback plans for risky changes.
+  specs:
+    - Use RFC 2119 keywords and Given/When/Then scenarios.
+  design:
+    - Document architecture decisions and rationale; add sequence diagrams for complex flows.
+  tasks:
+    - Group tasks by phase, number them hierarchically, and keep each task completable in one session.
+  apply:
+    guidelines:
+      - Follow established project patterns and avoid unrelated changes.
+      - Preserve existing OpenSpec change artifacts unless the active change is explicitly continued.
+    tdd: true
+    test_command: python -m unittest discover -s tests
+  verify:
+    test_command: python -m unittest discover -s tests
+    build_command: python -m pip install .
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas into main specifications.

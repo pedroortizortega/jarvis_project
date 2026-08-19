@@ -78,4 +78,4 @@ Chain strategy: pending
 
 ## Phase 8: Spec companion
 
-- [ ] 8.1 Create `specs/012_memory_router.md` following the `specs/011_engram_cloud_centralized.md` numbering/format convention; document Phase 1 scope, contracts, roles, namespaces, degraded-backend semantics
+- [x] 8.1 Create `specs/012_memory_router.md` following the `specs/011_engram_cloud_centralized.md` numbering/format convention; document Phase 1 scope, contracts, roles, namespaces, degraded-backend semantics

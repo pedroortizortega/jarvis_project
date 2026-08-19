@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-gpu-exporter
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: nvidia-gpu-exporter
+    app.kubernetes.io/part-of: gpu-handoff-web-panel
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-gpu-exporter
+  template:
+    metadata:
+      labels:
+        app: nvidia-gpu-exporter
+        app.kubernetes.io/name: nvidia-gpu-exporter
+        app.kubernetes.io/part-of: gpu-handoff-web-panel
+    spec:
+      automountServiceAccountToken: false
+      # Deliberately NOT requesting the `nvidia.com/gpu` resource (see
+      # design doc decision 3) — GPU visibility comes from the runtime
+      # class + env vars below, which is the exporter's own documented
+      # way to avoid exclusively allocating the node's single GPU.
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: exporter
+          # UID/GID intentionally left as the image default: this image
+          # runs as its own non-root default user, but the exact UID
+          # isn't verified against a live pull of this image, so we
+          # don't pin `runAsNonRoot`/`runAsUser` here — doing so without
+          # a confirmed matching UID risks breaking pod startup.
+          image: utkuozdemir/nvidia_gpu_exporter:1.14.0
+          env:
+            - name: HOME
+              value: /tmp
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: utility
+          ports:
+            - name: http
+              containerPort: 9835
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 32Mi
+            limits:
+              cpu: "200m"
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

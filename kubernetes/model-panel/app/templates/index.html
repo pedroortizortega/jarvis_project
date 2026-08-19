@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>model-panel</title>
+  <link rel="stylesheet" href="/static/panel.css" />
+</head>
+<body>
+  <main id="app">
+    <h1>GPU Handoff</h1>
+
+    <section id="token-gate" hidden>
+      <p>Enter the panel access token (stored only in this browser):</p>
+      <input id="token-input" type="password" autocomplete="off" placeholder="bearer token" />
+      <button id="token-save">Save</button>
+    </section>
+
+    <section id="panel-content" hidden>
+      <div id="mode-badge" class="badge">-</div>
+      <div id="session-badge" class="badge">-</div>
+
+      <section id="metrics">
+        <div class="gauge" id="gauge-cpu">
+          <div class="gauge-label">CPU</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-cpu-fill"></div></div>
+          <div class="gauge-value" id="gauge-cpu-value">unknown</div>
+        </div>
+        <div class="gauge" id="gauge-ram">
+          <div class="gauge-label">RAM</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-ram-fill"></div></div>
+          <div class="gauge-value" id="gauge-ram-value">unknown</div>
+        </div>
+        <div class="gauge" id="gauge-vram">
+          <div class="gauge-label">VRAM</div>
+          <div class="gauge-bar"><div class="gauge-fill unknown" id="gauge-vram-fill"></div></div>
+          <div class="gauge-value" id="gauge-vram-value">unknown</div>
+        </div>
+      </section>
+
+      <div id="profile-picker">
+        <label for="profile-select">Local profile</label>
+        <select id="profile-select">
+          <option value="daily">daily</option>
+          <option value="large">large</option>
+        </select>
+      </div>
+
+      <button id="toggle-btn" disabled>Switch to Cloud</button>
+
+      <div id="progress" hidden>Switching&hellip;</div>
+      <div id="error-banner" class="error" hidden></div>
+      <button id="repair-btn" hidden>Repair</button>
+    </section>
+  </main>
+  <script src="/static/panel.js"></script>
+</body>
+</html>

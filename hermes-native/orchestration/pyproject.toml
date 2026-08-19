@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-intent-orchestration"
+version = "0.1.0"
+description = "Local intent routing for isolated Hermes profiles"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6,<7"]
+
+[project.entry-points."hermes_agent.plugins"]
+intent-orchestration = "hermes_intent_orchestration"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hermes_intent_orchestration = ["data/*.json", "data/*.md", "data/*.yaml"]

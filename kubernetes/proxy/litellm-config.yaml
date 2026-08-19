@@ -10,9 +10,15 @@ data:
     from litellm.integrations.custom_logger import CustomLogger
 
     MODEL_NAMES = {
+        "qwen3.5-9b",
+        "openai/qwen3.5-9b",
+        "llama-cpp-qwen35-9b-q6",
         "qwen3.6-27b",
         "openai/qwen3.6-27b",
         "llama-cpp-qwen36-27b",
+        "qwen3.6-27b-q3",
+        "openai/qwen3.6-27b-q3",
+        "llama-cpp-qwen36-27b-q3",
         "qwen3.6-27b-q6",
         "openai/qwen3.6-27b-q6",
         "llama-cpp-qwen36-27b-q6",
@@ -87,12 +93,23 @@ data:
           api_key: "not-needed"  # vLLM no exige key interna; la seguridad la pone LiteLLM hacia afuera
       - model_name: qwen3.6-27b
         litellm_params:
-          model: openai/qwen3.6-27b
-          # llama.cpp se activa manualmente despues de detener los pods vLLM que usan la GPU.
-          api_base: http://llama-server.llms.svc.cluster.local:8080/v1
+          # Alias estable del perfil grande Q3; el router descarga el 9B antes de cargarlo.
+          model: openai/qwen3.6-27b-q3
+          api_base: http://llama-router.llms.svc.cluster.local:8080/v1
           api_key: os.environ/LLAMA_API_KEY
         model_info:
           id: llama-cpp-qwen36-27b
+          mode: chat
+          max_tokens: 65536
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+      - model_name: qwen3.6-27b-q3
+        litellm_params:
+          model: openai/qwen3.6-27b-q3
+          api_base: http://llama-router.llms.svc.cluster.local:8080/v1
+          api_key: os.environ/LLAMA_API_KEY
+        model_info:
+          id: llama-cpp-qwen36-27b-q3
           mode: chat
           max_tokens: 65536
           max_input_tokens: 49152
@@ -112,10 +129,20 @@ data:
       - model_name: qwen3.5-9b
         litellm_params:
           model: openai/qwen3.5-9b
-          api_base: http://keda-add-ons-http-interceptor-proxy.keda-system.svc.cluster.local:8080/v1
-          extra_headers:
-            Host: vllm-small-model.llms.svc.cluster.local
-          api_key: "not-needed"
+          api_base: http://llama-router.llms.svc.cluster.local:8080/v1
+          api_key: os.environ/LLAMA_API_KEY
+        model_info:
+          id: llama-cpp-qwen35-9b-q6
+          mode: chat
+          max_tokens: 65536
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+      - model_name: cloud
+        litellm_params:
+          # codex-shim posee la sesion OAuth de Codex y traduce Chat Completions <-> Responses API (D15).
+          model: openai/gpt-5.6-sol
+          api_base: http://codex-shim.llms.svc.cluster.local:8080/v1
+          api_key: os.environ/CODEX_SHIM_KEY
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY
       # Este proxy no usa virtual keys ni Postgres. El master key funciona sin DB y debe fallar cerrado.
@@ -127,6 +154,14 @@ data:
         - litellm_callbacks.max_output_tokens_cap
     router_settings:
       enable_pre_call_checks: true
+      # Found live (Amendment 5): LiteLLM's own default is allowed_fails=1 /
+      # cooldown_time=60s — a single transient failure (e.g. right during a
+      # pod restart) blacklists the whole model group for a minute. Every
+      # alias here has exactly ONE deployment behind it (no redundancy), so
+      # that default turns any one-off blip into a real outage. Require 3
+      # consecutive failures before cooling down.
+      allowed_fails: 3
+      cooldown_time: 30
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -163,6 +198,11 @@ spec:
                 secretKeyRef:
                   name: litellm-auth
                   key: llama-api-key
+            - name: CODEX_SHIM_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: codex-shim-key
+                  key: internal-key
             - name: LITELLM_MODE
               value: PRODUCTION
             - name: PYTHONPATH

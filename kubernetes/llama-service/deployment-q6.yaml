@@ -100,7 +100,7 @@ spec:
               memory: 32Gi
             limits:
               cpu: "24"
-              memory: 52Gi
+              memory: 44Gi
               nvidia.com/gpu: "1"
           startupProbe:
             httpGet:

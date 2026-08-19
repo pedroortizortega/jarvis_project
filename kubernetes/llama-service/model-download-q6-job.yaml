@@ -51,7 +51,9 @@ spec:
                 exit 0
               fi
 
-              rm -f "$partial"
+              # A corrupt target has no rollback value and retaining it would
+              # require space for two complete 25.6 GB files during recovery.
+              rm -f "$target" "$partial"
               curl --fail --location --retry 5 --retry-all-errors \
                 --connect-timeout 30 --output "$partial" "$url"
 

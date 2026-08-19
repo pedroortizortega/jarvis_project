@@ -1,0 +1,25 @@
+# This is the removable LAN access path. It is not the application service.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: engram-lan
+  namespace: engram
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls.options: engram-engram-mtls@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - engram.lan
+      secretName: engram-server-tls
+  rules:
+    - host: engram.lan
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: engram-cloud
+                port:
+                  name: http

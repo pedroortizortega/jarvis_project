@@ -1,0 +1,35 @@
+# codex-shim RBAC — D13: own least-privilege ServiceAccount, separate from
+# model-panel. Grants only get/patch/update on the single named Secret
+# `codex-shim-auth`. No `list`/`watch` (Kubernetes forbids `resourceNames`
+# with list/watch — `get` by name cannot enumerate the namespace anyway,
+# which is the point). No deployments/configmaps/scaledobjects access.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: codex-shim
+  namespace: llms
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: codex-shim
+  namespace: llms
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["codex-shim-auth"]
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: codex-shim
+  namespace: llms
+subjects:
+  - kind: ServiceAccount
+    name: codex-shim
+    namespace: llms
+roleRef:
+  kind: Role
+  name: codex-shim
+  apiGroup: rbac.authorization.k8s.io

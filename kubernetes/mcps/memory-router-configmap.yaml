@@ -15,7 +15,12 @@ metadata:
     app: memory-router
 data:
   # Server-side identity -> permitted role(s) mapping (proposal decision 5 —
-  # never caller-asserted). Loaded by memory_router.app via PyYAML.
+  # never caller-asserted). NOT currently loaded by the app: Phase 1 code
+  # hardcodes this same map in permissions.py::IDENTITY_ROLES and
+  # app.py::_load_role_map_from_env() (CN identities + bearer tokens read
+  # from env vars). This file documents the intended shape for operators and
+  # is the target of a deferred PyYAML-ConfigMap wiring — see design.md
+  # Open Questions.
   identity-roles.yaml: |
     identities:
       pedro-claude-code:

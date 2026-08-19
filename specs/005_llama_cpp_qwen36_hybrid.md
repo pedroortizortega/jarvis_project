@@ -385,6 +385,10 @@ se pretende reservar.
 ### Fase 5 - Arrancar llama.cpp
 
 ```bash
+test "$(kubectl -n llms get deployment/llama-server-q3 \
+  -o jsonpath='{.spec.replicas}')" = 0
+test "$(kubectl -n llms get deployment/llama-server-q6 \
+  -o jsonpath='{.spec.replicas}')" = 0
 kubectl -n llms scale deployment/llama-server --replicas=1
 kubectl -n llms rollout status deployment/llama-server --timeout=35m
 kubectl -n llms get pods -l app=llama-server -o wide
@@ -520,13 +524,18 @@ El servidor tiene 65,536 tokens de contexto. Hermes no debe seguir anunciando
 primero el secreto `OPENAI_API_KEY` de Hermes para que coincida con
 `litellm-auth/master-key`; usar el backend de secretos configurado o el archivo
 devuelto por `hermes config env-path`, sin imprimir el valor. No guardarlo en
-`config.yaml`.
+`config.yaml`. Como el endpoint es una IP privada, Hermes bloquea el fallback
+automatico de `OPENAI_API_KEY`; guardar solo la referencia de entorno explicita.
 
 ```bash
+hermes config set model.api_key '${env:OPENAI_API_KEY}'
 hermes config set model.context_length 65536
 hermes config set model.max_tokens 16384
 hermes config set compression.threshold_tokens 40000
 hermes config set compression.proactive_prune_tokens 32000
+hermes config set auxiliary.compression.context_length 65536
+hermes config set auxiliary.compression.timeout 1800
+hermes config set auxiliary.title_generation.timeout 300
 hermes config set model.default qwen3.6-27b
 hermes config get model
 hermes config get compression
@@ -586,11 +595,21 @@ done
 sudo systemctl stop hermes-gateway.service
 ```
 
-Detener llama.cpp y esperar que libere la GPU:
+Detener ambas variantes de llama.cpp y esperar que liberen la GPU:
 
 ```bash
 kubectl -n llms scale deployment/llama-server --replicas=0
-kubectl -n llms wait --for=delete pod -l app=llama-server --timeout=5m
+kubectl -n llms scale deployment/llama-server-q3 --replicas=0
+kubectl -n llms scale deployment/llama-server-q6 --replicas=0
+LLAMA_GPU_POD_NAMES="$(kubectl -n llms get pods \
+  -l 'app in (llama-server,llama-server-q3,llama-server-q6)' \
+  --field-selector='status.phase!=Succeeded,status.phase!=Failed' \
+  -o name)"
+LLAMA_GPU_PODS=()
+if [[ -n "$LLAMA_GPU_POD_NAMES" ]]; then
+  mapfile -t LLAMA_GPU_PODS <<< "$LLAMA_GPU_POD_NAMES"
+  kubectl -n llms wait --for=delete "${LLAMA_GPU_PODS[@]}" --timeout=5m
+fi
 nvidia-smi
 ```
 
@@ -650,6 +669,27 @@ master key desde Secret y `allow_requests_on_db_unavailable: false`.
 ## Tuning posterior
 
 Cambiar una variable por vez y medir prompt processing, generacion, RAM y VRAM.
+
+### Resultado de `--fit-target 2048`
+
+El 29 de julio de 2026 se compararon `4096` y `2048` con el mismo build,
+modelo, contexto, threads y KV cache. El benchmark uso el endpoint nativo
+`/completion`, `cache_prompt=false`, semilla fija y 256 tokens con
+`ignore_eos=true`.
+
+| Target | Prompt | Capas CUDA | Buffer CUDA | Buffer CPU | Prompt tok/s | Generacion tok/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4096 MiB | 3,744 | 44/65 | 9,749.51 MiB | 4,964.75 MiB | 743.63 | 6.53 |
+| 2048 MiB | 3,744 | 54/65 | 11,777.10 MiB | 2,937.16 MiB | 897.22 | 7.78 |
+| 4096 MiB | 31,454 | 44/65 | 9,749.51 MiB | 4,964.75 MiB | 697.27 | 2.90 |
+| 2048 MiB | 31,454 | 54/65 | 11,777.10 MiB | 2,937.16 MiB | 828.33 | 3.46 |
+
+El cambio offloadea diez capas adicionales y mejora la generacion cerca de
+19% tanto con contexto corto como con 31.5K tokens. Durante la medicion larga
+quedaron aproximadamente 1,945 MiB de VRAM libres, incluyendo el consumo del
+escritorio. No hubo OOM, reinicios ni errores CUDA, por lo que `2048` queda
+como valor operativo. El KV F16 permanece en CPU y ocupa 4,096 MiB; Flash
+Attention y los kernels fusionados de Gated DeltaNet quedaron habilitados.
 
 ### Mayor rendimiento
 
@@ -885,3 +925,69 @@ vllm               0
 vllm-big-model     0
 vllm-small-model   0
 llama-server       1
+
+---
+
+## Agregar un modole big qwen 3.6 de 27B cuantizado a 6 bits
+
+El deploy Q6 quedó preparado en llms, separado del IQ4_XS y con replicas: 0 por defecto.
+Compatibilidad
+- Archivo: Qwen3.6-27B-UD-Q6_K_XL.gguf
+- Tamaño: 25,636,485,344 bytes, 23.876 GiB
+- SHA-256: 8746881d40f280b1b6b858c656a347c754ed3d9cc8d2e1ad46b3635b87f611f8
+- GPU: RTX 4070 Ti SUPER, 16,376 MiB, SM 8.9
+- llama.cpp: compatible con qwen35, Q6_K_XL, Gated DeltaNet y CUDA Ada
+- Contexto configurado: 65,536 tokens
+- Uso: text-only; visión requiere descargar mmproj
+No cabe completamente en VRAM. El despliegue reserva 4 GiB de margen y usa inferencia híbrida:
+- Aproximadamente 12 GiB máximos para pesos y buffers CUDA.
+- El resto de los pesos permanece en RAM.
+- El KV F16 de 65K consume aproximadamente 4 GiB adicionales de RAM.
+- Request: 32 GiB RAM.
+- Límite: 44 GiB RAM.
+Es compatible y debería cargar, pero será sensiblemente más lento que IQ4_XS por ejecutar más capas desde CPU/RAM. A cambio, Q6 ofrece mayor fidelidad y menor pérdida por cuantización.
+Archivos
+- kubernetes/llama-service/deployment-q6.yaml
+- kubernetes/llama-service/model-download-q6-job.yaml
+- kubernetes/llama-service/pvc-q6.yaml
+- kubernetes/llama-service/service-q6.yaml
+- specs/006_qwen36_27b_ud_q6_xl.md
+La ruta LiteLLM es qwen3.6-27b-q6.
+Descargar
+Ejecutar dentro de Bash:
+set -euo pipefail
+
+kubectl apply -k kubernetes/llama-service
+
+kubectl -n llms delete job download-qwen36-27b-ud-q6-k-xl \
+  --ignore-not-found
+
+kubectl apply \
+  -f kubernetes/llama-service/model-download-q6-job.yaml
+
+kubectl -n llms wait \
+  --for=condition=Complete \
+  job/download-qwen36-27b-ud-q6-k-xl \
+  --timeout=6h10m
+
+kubectl -n llms logs job/download-qwen36-27b-ud-q6-k-xl
+Activar
+Solo después de pausar KEDA y dejar vLLM en cero:
+sudo systemctl stop hermes-gateway.service
+
+kubectl -n llms scale deployment/llama-server --replicas=0
+kubectl -n llms scale deployment/llama-server-q6 --replicas=1
+
+kubectl -n llms rollout status \
+  deployment/llama-server-q6 \
+  --timeout=45m
+
+kubectl -n llms logs deployment/llama-server-q6 --tail=300
+Después:
+kubectl apply -f kubernetes/proxy/litellm-config.yaml
+kubectl -n llms rollout restart deployment/litellm
+kubectl -n llms rollout status deployment/litellm --timeout=5m
+
+hermes config set model.default qwen3.6-27b-q6
+sudo systemctl start hermes-gateway.service
+Los manifiestos pasaron dry-run contra el API server. No se aplicó ni se inició Q6 en el clúster.

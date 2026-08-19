@@ -1,0 +1,22 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
+# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+#
+# Mirrors the mTLS pattern documented for the existing `mcps` tenant
+# (specs/011_engram_cloud_centralized.md §2: TLSOption `mcps-engram-mtls`,
+# `RequireAndVerifyClientCert`). memory-router gets its own TLSOption/CA so
+# rollback (proposal decision 4) never touches Engram's certificates.
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: mcps-memory-router-mtls
+  namespace: mcps
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    # `memory-router-client-ca` must be created out-of-band (same pattern as
+    # `engram-client-ca`, spec 011 §2) — the CA private key must never be
+    # committed to this repository.
+    secretNames:
+      - memory-router-client-ca
+    clientAuthType: RequireAndVerifyClientCert

@@ -36,7 +36,7 @@ class MemoryBackend(Protocol):
     def search(self, req: SearchRequest) -> SearchResult: ...
 ```
 
-Registration is a setuptools entry point group `memory_router.backends`, mirroring `hermes_agent.plugins` in `hermes-native/orchestration/pyproject.toml`. Adding backend #2 = new package + entry point + config row; no router code change.
+Registration is a setuptools entry point group `memory_router.backends`, mirroring `hermes_agent.plugins` in `hermes-native/memory-router/pyproject.toml`. Adding backend #2 = new package + entry point + config row; no router code change.
 
 **Engram reference adapter**: spawns `engram mcp --tools=agent` with `ENGRAM_CLOUD_SERVER=http://engram-cloud.mcps.svc.cluster.local:8080`, per-identity `ENGRAM_CLOUD_TOKEN`, `ENGRAM_CLOUD_AUTOSYNC=1` — the access path proven in spec 011. Engram has no namespaces, so the adapter encodes namespace as a reserved `topic_key` prefix (`ns:/projects/foo/...`) inside project `jarvis_project`; `store`->`mem_save`, `search`->`mem_search` + `mem_get_observation`. `reflect` is absent from its capabilities.
 
@@ -77,12 +77,12 @@ Identity map: `pedro-claude-code`->{coder}, `codex`->{coder}, `opencode`->{coder
 
 | File | Action | Description |
 |---|---|---|
-| `hermes-native/orchestration/src/memory_router/{app,identity,permissions,namespaces,registry,journal,contracts}.py` | Create | Router core. |
-| `hermes-native/orchestration/src/memory_router/backends/engram.py` | Create | Reference adapter. |
-| `hermes-native/orchestration/pyproject.toml` | Modify | Add `memory_router.backends` group + console scripts. |
+| `hermes-native/memory-router/src/memory_router/{app,identity,permissions,namespaces,registry,journal,contracts}.py` | Create | Router core. |
+| `hermes-native/memory-router/src/memory_router/backends/engram.py` | Create | Reference adapter. |
+| `hermes-native/memory-router/pyproject.toml` | Modify | Add `memory_router.backends` group + console scripts. |
 | `kubernetes/mcps/memory-router-{configmap,deployment,service,pvc,ingress,tlsoption}.yaml` | Create | Third `mcps` tenant, ClusterIP:8080, `automountServiceAccountToken: false`, non-root, read-only rootfs, caps dropped. |
 | `tests/test_memory_router_*.py` | Create | RED tests. |
-| `specs/012_memory_router.md` | Create | Numbered spec companion. |
+| `specs/014_memory_router.md` | Create | Numbered spec companion. |
 
 ## Testing Strategy
 
@@ -114,3 +114,4 @@ No data migration. Deploy alongside existing direct Engram access; once healthy 
 - [ ] Does the router hold one shared Engram identity or proxy each client's token? Phase 1 assumes one router identity; attribution then lives in the namespace, not in Engram principals.
 - [ ] Journal retention/alerting when a backend stays down beyond N hours.
 - [ ] Traefik client-DN header name to confirm against the live `mcps` ingress config.
+- [ ] **ConfigMap + PyYAML wiring deferred**: `kubernetes/mcps/memory-router-configmap.yaml`'s `identity-roles.yaml` documents the intended identity->role map, but Phase 1 code does not read it — `permissions.py::IDENTITY_ROLES` and `app.py::_load_role_map_from_env()` hardcode the equivalent map directly (CN identities in code, bearer tokens from env vars). Actually wiring the ConfigMap through PyYAML (this doc's originally stated architecture) is deferred to a later phase; until then, a change to the ConfigMap's `identity-roles.yaml` has no runtime effect and must be mirrored by hand into `permissions.py`/`app.py`.

@@ -1,0 +1,19 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
+# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-router
+  namespace: mcps
+  labels:
+    app: memory-router
+    mcp: memory-router
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: memory-router

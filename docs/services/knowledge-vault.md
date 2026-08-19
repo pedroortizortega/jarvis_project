@@ -57,6 +57,59 @@ agent (Hermes)                 human (Obsidian / phone)
             (private-network clients clone this, read-only copy of the vault)
 ```
 
+```mermaid
+graph LR
+    Agent["JARVIS proposes
+    (propose-note skill →
+    knowledge-vault-propose CLI)"]
+    Proposals[("proposals/")]
+    Review1["knowledge-vault-review.service
+    (project)
+    2min / 2min"]
+    Pending[("pending/")]
+    Human["HUMAN DECIDES
+    (Obsidian, edits
+    pending file directly)"]
+    Review2["knowledge-vault-review.service
+    (import)
+    2min / 2min"]
+    Decisions[("decisions/")]
+    Approve["knowledge-vault-approve.service
+    (temporary stand-in)
+    3min / 2min"]
+    Approved[("approved/")]
+    Publisher["knowledge-vault-publisher.service
+    ONLY writer to the vault
+    4min / 3min"]
+    Vault[("/opt/knowledge-vault/vault")]
+    Mirror["knowledge-vault-mirror.service
+    5min / 10min"]
+    Bare[("/srv/git/knowledge-vault.git")]
+
+    Agent --> Proposals
+    Proposals --> Review1
+    Review1 --> Pending
+    Pending --> Human
+    Human --> Review2
+    Review2 --> Decisions
+    Proposals --> Approve
+    Decisions --> Approve
+    Approve --> Approved
+    Approved --> Publisher
+    Publisher --> Vault
+    Vault --> Mirror
+    Mirror --> Bare
+
+    class Human human
+    class Publisher publisher
+    classDef human fill:#f9d5a7,stroke:#a86a1a,stroke-width:2px,color:#3a2200
+    classDef publisher fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#0d2e10
+```
+
+Only `knowledge-vault-publisher.service` writes to the canonical vault — see
+[Safety model](#safety-model) for why that's enforced twice (file
+ownership/mode and systemd `ReadWritePaths=`/`InaccessiblePaths=`).
+
 Each stage reads one directory and writes another under
 `/var/lib/knowledge-vault/`; no stage skips ahead. `review-sync` is the odd
 one out — it doesn't sit in the propose→publish line, it mirrors the

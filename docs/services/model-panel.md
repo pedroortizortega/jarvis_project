@@ -46,6 +46,34 @@ deterministically from one consumer to another — local model serving, or
 freeing it entirely for something else (Cloud mode routes through
 `codex-shim` instead, using no local GPU at all):
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Panel as model-panel (app/main.py)
+    participant K8s as Kubernetes API
+    participant LiteLLM as LiteLLM ConfigMap
+
+    Client->>Panel: POST /api/switch {target}
+    Panel->>Panel: _check_bearer(request)
+    alt target == "cloud"
+        Panel->>Panel: assert_switch_to_cloud_allowed()<br/>(sync Codex session check)
+        Panel-->>Client: 409 {session_state, reason}<br/>(if session invalid — nothing scheduled)
+    end
+    Panel-->>Client: 202 {transition_id}
+    Note over Panel: background thread:<br/>run_switch_in_background() -> steps.switch_to()
+
+    Panel->>K8s: drain step — wait_for_drain()
+    Panel->>K8s: scale_to_zero step — patch_namespaced_deployment_scale()
+    loop poll until free or timeout
+        Panel->>K8s: confirm_gpu_free step — wait_gpu_free() -> gpu_free()<br/>(app/handoff/gpu.py)
+    end
+    Note over Panel: GpuNotFreeError aborts the switch<br/>if not free within the timeout
+    Panel->>LiteLLM: patch_litellm_config step —<br/>patch_litellm_alias_yaml() via patch_namespaced_config_map()
+    Panel->>K8s: restart_litellm step —<br/>patch_namespaced_deployment() (pod-template annotation touch)
+    Client->>Panel: GET /api/status (polling)
+    Panel-->>Client: phase leaves "transitioning"
+```
+
 1. **Drain** — stop sending new traffic to the local model.
 2. **Scale to zero** — the currently-active local Deployment
    (`llama-router`, or whichever `vllm*`/`llama-server*` is active).
@@ -87,6 +115,19 @@ one:
 |---|---|---|
 | `node-exporter` | `node-exporter.yaml` | `/proc`, `/sys`, `/` (read-only `hostPath`, **no** `hostNetwork`) |
 | `nvidia-gpu-exporter` | `gpu-exporter.yaml` | `nvidia-smi` via `runtimeClassName: nvidia` + `NVIDIA_VISIBLE_DEVICES=all` |
+
+```mermaid
+graph LR
+    Browser["Browser<br/>panel.js: poll()"] -->|GET /api/metrics<br/>every POLL_INTERVAL_MS| API["FastAPI route<br/>api_metrics() (app/main.py)"]
+    API --> Fetch["MetricsClient.fetch_metrics()<br/>(app/clients/metrics_client.py)"]
+    Fetch -->|GET /metrics| Node["node-exporter<br/>CPU/RAM text"]
+    Fetch -->|GET /metrics| Gpu["nvidia-gpu-exporter<br/>VRAM text"]
+    Node --> Parse["parse_node_cpu_totals()<br/>parse_single_gauge()<br/>compute_cpu_pct_from_deltas()<br/>compute_ram_pct()"]
+    Gpu --> Parse2["parse_single_gauge()<br/>compute_vram_pct()"]
+    Parse --> JSON["{cpu_pct, ram_pct, vram_pct}<br/>JSON response"]
+    Parse2 --> JSON
+    JSON --> Render["panel.js: renderGauge()<br/>x3 (cpu/ram/vram)"]
+```
 
 **The GPU exporter deliberately never requests the `nvidia.com/gpu`
 Kubernetes resource.** That resource is the same discrete unit the entire

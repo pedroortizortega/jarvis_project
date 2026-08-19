@@ -24,7 +24,7 @@ certificados (una CA privada, aunque sea autofirmada).
 ## 1. Namespace
 
 ```sh
-kubectl create namespace engram
+kubectl create namespace mcps
 ```
 
 ## 2. CA privada y certificados
@@ -74,20 +74,20 @@ con otro `NAME`.
 ## 3. Secrets
 
 ```sh
-kubectl -n engram create secret generic engram-postgres-auth \
+kubectl -n mcps create secret generic engram-postgres-auth \
   --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
 
-DB_PASS=$(kubectl -n engram get secret engram-postgres-auth -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
-kubectl -n engram create secret generic engram-cloud-config \
-  --from-literal=ENGRAM_DATABASE_URL="postgres://engram:${DB_PASS}@engram-postgres.engram.svc.cluster.local:5432/engram_cloud?sslmode=disable" \
+DB_PASS=$(kubectl -n mcps get secret engram-postgres-auth -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+kubectl -n mcps create secret generic engram-cloud-config \
+  --from-literal=ENGRAM_DATABASE_URL="postgres://engram:${DB_PASS}@engram-postgres.mcps.svc.cluster.local:5432/engram_cloud?sslmode=disable" \
   --from-literal=ENGRAM_JWT_SECRET="$(openssl rand -base64 48)" \
   --from-literal=ENGRAM_CLOUD_TOKEN="$(openssl rand -hex 32)" \
   --from-literal=ENGRAM_CLOUD_ALLOWED_PROJECTS="tu_proyecto"
 
-kubectl -n engram create secret generic engram-client-ca \
+kubectl -n mcps create secret generic engram-client-ca \
   --from-file=ca.crt="$PKI/ca/ca.crt"
 
-kubectl -n engram create secret tls engram-server-tls \
+kubectl -n mcps create secret tls engram-server-tls \
   --cert="$PKI/server/$HOST.crt" --key="$PKI/server/$HOST.key"
 ```
 
@@ -99,7 +99,7 @@ tarde vía el dashboard (ver [client-setup.md](client-setup.md)).
 emitir tokens por identidad después): agregalo ahora si ya sabés que vas a
 tener múltiples clientes.
 ```sh
-kubectl -n engram patch secret engram-cloud-config --type merge \
+kubectl -n mcps patch secret engram-cloud-config --type merge \
   -p "{\"data\":{\"ENGRAM_CLOUD_TOKEN_PEPPER\":\"$(openssl rand -base64 32 | base64 -w0)\"}}"
 ```
 
@@ -113,7 +113,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: engram-cloud
-  namespace: engram
+  namespace: mcps
 spec:
   type: ClusterIP
   selector:
@@ -131,7 +131,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: engram-cloud
-  namespace: engram
+  namespace: mcps
 spec:
   replicas: 1
   selector:
@@ -174,7 +174,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: engram-postgres-data
-  namespace: engram
+  namespace: mcps
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
@@ -188,7 +188,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: engram-postgres
-  namespace: engram
+  namespace: mcps
 spec:
   type: ClusterIP
   selector: { app: engram-postgres }
@@ -203,7 +203,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: engram-postgres
-  namespace: engram
+  namespace: mcps
 spec:
   replicas: 1
   strategy: { type: Recreate }
@@ -263,7 +263,7 @@ apiVersion: traefik.io/v1alpha1
 kind: TLSOption
 metadata:
   name: engram-mtls
-  namespace: engram
+  namespace: mcps
 spec:
   minVersion: VersionTLS12
   clientAuth:
@@ -278,7 +278,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: engram
-  namespace: engram
+  namespace: mcps
   annotations:
     traefik.ingress.kubernetes.io/router.tls.options: engram-engram-mtls@kubernetescrd
 spec:
@@ -308,7 +308,7 @@ características, no son específicos de este repo:
    kubelet rechace el contenedor ("cannot verify user is non-root").
    Confirmá el UID real de tu imagen antes de fijarlo:
    ```sh
-   kubectl -n engram run uid-check --rm -i --restart=Never \
+   kubectl -n mcps run uid-check --rm -i --restart=Never \
      --image=ghcr.io/gentleman-programming/engram:v1.20.0 --command -- id
    ```
    (En `v1.20.0` es `10001`; puede cambiar en otras versiones.)
@@ -329,16 +329,16 @@ características, no son específicos de este repo:
 kubectl apply -f namespace.yaml -f postgres-pvc.yaml -f postgres-service.yaml \
   -f postgres-deployment.yaml -f service.yaml -f deployment.yaml -f mtls-tlsoption.yaml
 
-kubectl -n engram rollout status deployment/engram-postgres
-kubectl -n engram rollout status deployment/engram-cloud
-kubectl -n engram get pods
+kubectl -n mcps rollout status deployment/engram-postgres
+kubectl -n mcps rollout status deployment/engram-cloud
+kubectl -n mcps get pods
 ```
 
 Recién cuando ambos estén `Running 1/1`, aplicá el Ingress:
 
 ```sh
 kubectl apply -f ingress.yaml
-kubectl -n engram get ingress engram
+kubectl -n mcps get ingress engram
 ```
 
 Verificación end-to-end (necesita el certificado de cliente del paso 2 y

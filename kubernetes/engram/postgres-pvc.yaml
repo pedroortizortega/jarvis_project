@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: engram-postgres-data
-  namespace: engram
+  namespace: mcps
 spec:
   accessModes:
     - ReadWriteOnce

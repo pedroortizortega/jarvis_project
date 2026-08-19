@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: engram-postgres
-  namespace: engram
+  namespace: mcps
 spec:
   replicas: 1
   strategy:

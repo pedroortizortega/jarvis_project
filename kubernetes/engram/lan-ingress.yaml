@@ -3,7 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: engram-lan
-  namespace: engram
+  namespace: mcps
   annotations:
     traefik.ingress.kubernetes.io/router.tls.options: engram-engram-mtls@kubernetescrd
 spec:

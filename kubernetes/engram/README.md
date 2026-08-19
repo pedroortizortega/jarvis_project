@@ -79,19 +79,19 @@ to mTLS.
 ```sh
 kubectl apply -f kubernetes/engram/namespace.yaml
 
-kubectl -n engram create secret generic engram-postgres-auth \
+kubectl -n mcps create secret generic engram-postgres-auth \
   --from-literal=POSTGRES_PASSWORD='<database-password-from-secret-manager>'
 
-kubectl -n engram create secret generic engram-cloud-config \
-  --from-literal=ENGRAM_DATABASE_URL='postgres://engram:<url-encoded-database-password>@engram-postgres.engram.svc.cluster.local:5432/engram_cloud?sslmode=disable' \
+kubectl -n mcps create secret generic engram-cloud-config \
+  --from-literal=ENGRAM_DATABASE_URL='postgres://engram:<url-encoded-database-password>@engram-postgres.mcps.svc.cluster.local:5432/engram_cloud?sslmode=disable' \
   --from-literal=ENGRAM_JWT_SECRET='<32-or-more-random-bytes>' \
   --from-literal=ENGRAM_CLOUD_TOKEN='<bootstrap-bearer-token>' \
   --from-literal=ENGRAM_CLOUD_ALLOWED_PROJECTS='jarvis_project'
 
-kubectl -n engram create secret generic engram-client-ca \
+kubectl -n mcps create secret generic engram-client-ca \
   --from-file=ca.crt=/secure/path/engram-client-ca.pem
 
-kubectl -n engram create secret tls engram-server-tls \
+kubectl -n mcps create secret tls engram-server-tls \
   --cert=/secure/path/engram-server-cert.pem \
   --key=/secure/path/engram-server-key.pem
 ```
@@ -125,10 +125,10 @@ After all four secrets exist, apply and observe startup:
 
 ```sh
 kubectl apply -k kubernetes/engram
-kubectl -n engram rollout status deployment/engram-postgres
-kubectl -n engram rollout status deployment/engram-cloud
-kubectl -n engram get pods,service,ingress,tlsoption
-kubectl -n engram logs deployment/engram-cloud
+kubectl -n mcps rollout status deployment/engram-postgres
+kubectl -n mcps rollout status deployment/engram-cloud
+kubectl -n mcps get pods,service,ingress,tlsoption
+kubectl -n mcps logs deployment/engram-cloud
 ```
 
 No HTTP health path is configured because this slice does not assume one. A
@@ -252,13 +252,13 @@ equivalent controlled client:
 
 ```sh
 kubectl apply -f kubernetes/engram/lan-ingress.yaml
-kubectl -n engram get ingress engram-lan
+kubectl -n mcps get ingress engram-lan
 ```
 
 Disable LAN without touching PostgreSQL, Engram, secrets, or Tailnet:
 
 ```sh
-kubectl -n engram delete ingress engram-lan
+kubectl -n mcps delete ingress engram-lan
 ```
 
 Re-enable by applying the same tracked file. Confirm the Tailnet systemd units

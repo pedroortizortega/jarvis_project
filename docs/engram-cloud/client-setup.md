@@ -55,7 +55,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/kubectl -n engram port-forward --address=127.0.0.1 service/engram-cloud 7180:8080
+ExecStart=/usr/bin/kubectl -n mcps port-forward --address=127.0.0.1 service/engram-cloud 7180:8080
 Restart=always
 RestartSec=5
 

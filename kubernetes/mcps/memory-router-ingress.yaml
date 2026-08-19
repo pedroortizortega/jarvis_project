@@ -1,0 +1,27 @@
+# memory-router — Phase 1 deployment manifest (SDD change: memory-router)
+# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
+# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+#
+# Tailnet-only, mTLS-terminated at Traefik — same pattern as the existing
+# `engram-tailnet` IngressRoute (specs/011_engram_cloud_centralized.md §1).
+# Host is a placeholder: confirm the real Tailnet MagicDNS name for this
+# cluster (spec 011 uses `trantor.tail07dff9.ts.net`) before applying.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: memory-router-tailnet
+  namespace: mcps
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`memory-router.TAILNET_MAGICDNS_PLACEHOLDER`)
+      kind: Rule
+      services:
+        - name: memory-router
+          port: 8080
+  tls:
+    options:
+      name: mcps-memory-router-mtls
+      namespace: mcps
+    secretName: memory-router-server-tls

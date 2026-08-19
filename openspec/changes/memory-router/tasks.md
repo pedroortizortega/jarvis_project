@@ -69,12 +69,12 @@ Chain strategy: pending
 
 ## Phase 7: Deployment manifests
 
-- [ ] 7.1 Create `kubernetes/mcps/memory-router-configmap.yaml`: role map, namespace roots
-- [ ] 7.2 Create `kubernetes/mcps/memory-router-deployment.yaml`: `replicas: 1`, `Recreate`, non-root, read-only rootfs, caps dropped, `automountServiceAccountToken: false`, PVC-mounted journal
-- [ ] 7.3 Create `kubernetes/mcps/memory-router-service.yaml`: ClusterIP:8080
-- [ ] 7.4 Create `kubernetes/mcps/memory-router-pvc.yaml`: journal storage
-- [ ] 7.5 Create `kubernetes/mcps/memory-router-ingress.yaml` + `memory-router-tlsoption.yaml`: Traefik mTLS, mirroring existing `mcps` tenants
-- [ ] 7.6 Note in manifest PR description: cluster apply blocked on Engram Cloud manifest-ownership prerequisite (design.md Open Questions)
+- [x] 7.1 Create `kubernetes/mcps/memory-router-configmap.yaml`: role map, namespace roots
+- [x] 7.2 Create `kubernetes/mcps/memory-router-deployment.yaml`: `replicas: 1`, `Recreate`, non-root, read-only rootfs, caps dropped, `automountServiceAccountToken: false`, PVC-mounted journal
+- [x] 7.3 Create `kubernetes/mcps/memory-router-service.yaml`: ClusterIP:8080
+- [x] 7.4 Create `kubernetes/mcps/memory-router-pvc.yaml`: journal storage
+- [x] 7.5 Create `kubernetes/mcps/memory-router-ingress.yaml` + `memory-router-tlsoption.yaml`: Traefik mTLS, mirroring existing `mcps` tenants
+- [x] 7.6 Note in manifest PR description: cluster apply blocked on Engram Cloud manifest-ownership prerequisite (design.md Open Questions) — see the header comment repeated in all 6 files in this phase; **do not `kubectl apply` any of these until that prerequisite is resolved**.
 
 ## Phase 8: Spec companion
 

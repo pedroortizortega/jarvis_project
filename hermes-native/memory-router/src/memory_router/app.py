@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .contracts import BackendUnavailableError, SearchRequest, StoreRequest
+from .contracts import BackendUnavailableError, ReflectRequest, SearchRequest, StoreRequest
 from .identity import IdentityError, resolve_identity
 from .journal import Journal
 from .namespaces import NamespaceError, validate_namespace
@@ -196,18 +196,63 @@ class Dispatcher:
         return {"namespace": namespace, "items": items, "unavailable": unavailable}
 
     def reflect(self, *, cn, bearer, role=None, namespace=None, query=None) -> dict:
-        # Decision 1: placeholder in Phase 1. No logic, no backend call.
-        self._authenticate(cn, bearer)
-        raise DispatchError(
-            501, "not_implemented", "reflect is not implemented in Phase 1 (lands with Hindsight)"
-        )
+        """Read-oriented derived-conclusion query over a single `/user/master`
+        namespace. Runs the exact same identity -> namespace -> permission
+        pipeline as store/search/context (never bypassed), authorizing the
+        "reflect" verb. Mirrors `context()` — single namespace, no
+        `_fallback_chain`, since `/user/master` has no parent.
+        """
+        identity = self._authenticate(cn, bearer)
+        namespace = self._validate_namespace(namespace)
+        self._authorize(role=role, identity_name=identity.name, namespace=namespace, verb="reflect")
+
+        req = ReflectRequest(namespace=namespace, role=role, query=query or "")
+        backends = self._registry.backends_for(verb="reflect", namespace=namespace)
+
+        if not backends:
+            return {
+                "namespace": namespace,
+                "status": "no_backend",
+                "conclusions": [],
+                "unavailable": [],
+            }
+
+        conclusions: list[dict] = []
+        unavailable: list[dict] = []
+        status = "no_backend"
+        for backend in backends:
+            try:
+                result = backend.reflect(req)
+            except BackendUnavailableError as exc:
+                unavailable.append({"backend": exc.backend, "reason": exc.reason})
+                continue
+            if result.status == "ready":
+                status = "ready"
+                conclusions.extend(
+                    {
+                        "namespace": conclusion.namespace,
+                        "backend": conclusion.backend,
+                        "content": conclusion.content,
+                        "confidence": conclusion.confidence,
+                    }
+                    for conclusion in result.conclusions
+                )
+            elif result.status == "pending" and status != "ready":
+                status = "pending"
+
+        if status == "no_backend" and unavailable:
+            status = "degraded"
+
+        return {
+            "namespace": namespace,
+            "status": status,
+            "conclusions": conclusions,
+            "unavailable": unavailable,
+        }
 
 
 def _dispatch_error_payload(error: DispatchError) -> dict:
-    payload = {"error": error.error, "detail": error.detail}
-    if error.error == "not_implemented":
-        payload["phase"] = "hindsight"
-    return payload
+    return {"error": error.error, "detail": error.detail}
 
 
 # --------------------------------------------------------------------------
@@ -225,6 +270,14 @@ def _parse_store_body(body: dict) -> dict:
 
 
 def _parse_search_body(body: dict) -> dict:
+    return {
+        "role": body.get("role"),
+        "namespace": body.get("namespace"),
+        "query": body.get("query", ""),
+    }
+
+
+def _parse_reflect_body(body: dict) -> dict:
     return {
         "role": body.get("role"),
         "namespace": body.get("namespace"),
@@ -286,7 +339,8 @@ def make_handler(dispatcher: Dispatcher):
                     result = dispatcher.search(cn=cn, bearer=bearer, **_parse_search_body(body))
                     self._respond(200, result)
                 elif self.path == "/memory/reflect":
-                    dispatcher.reflect(cn=cn, bearer=bearer, **body)
+                    result = dispatcher.reflect(cn=cn, bearer=bearer, **_parse_reflect_body(body))
+                    self._respond(200, result)
                 else:
                     self._respond(404, {"error": "not_found", "detail": self.path})
             except DispatchError as exc:
@@ -397,7 +451,7 @@ class RestClient:
         return self._post("/memory/search", _parse_search_body(kwargs))
 
     def reflect(self, **kwargs) -> tuple[int, dict]:
-        return self._post("/memory/reflect", kwargs)
+        return self._post("/memory/reflect", _parse_reflect_body(kwargs))
 
 
 def handle_mcp_tool_call(name: str, arguments: dict, *, client) -> dict:

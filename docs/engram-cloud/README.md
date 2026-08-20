@@ -20,7 +20,9 @@ a hacerlo (o hacerlo en otro clúster) desde cero.
 2. [Instalación en Kubernetes](installation.md) — desplegar Engram Cloud
    desde cero: prerrequisitos, PKI, secrets, manifiestos, verificación.
 3. [Conectar clientes](client-setup.md) — cómo sumar un agente nuevo:
-   mismo nodo, LAN, Tailnet, otra máquina sin `kubectl`, y **Raspberry Pi**.
+   mismo nodo, LAN, Tailnet, otra máquina sin `kubectl`, **Raspberry Pi**,
+   y una máquina sin admin del sistema ([`remote-access/`](remote-access/)
+   — plantillas Docker reusables, sin secretos commiteados).
 
 ## Resumen de 30 segundos
 

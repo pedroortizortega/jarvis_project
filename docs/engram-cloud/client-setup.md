@@ -232,3 +232,28 @@ MB), pero si igual hace falta ahorrar recursos, el mismo patrón funciona
 con `stunnel` en modo cliente — la configuración es equivalente
 (certificado + clave + CA + destino), solo cambia la sintaxis del
 archivo de configuración.
+
+## Escenario 5 — máquina remota sin `kubectl` **ni** admin del sistema
+
+Mismo problema que el Escenario 4 (Traefik rutea por `Host`, `engram` no
+sabe presentar cert de cliente), pero acá tampoco se puede instalar
+`socat`/Tailscale directo en el host — típico de una laptop de trabajo
+gestionada por IT, sin privilegios de administrador.
+
+La solución es correr **Tailscale adentro de Docker** (contenido en el
+namespace de red del contenedor, no toca la red del host) más un segundo
+contenedor con `socat` compartiendo ese mismo namespace, haciendo el mismo
+mTLS termination que el Escenario 4 pero desde adentro del contenedor. El
+único requisito real es que Docker esté disponible — no admin del SO.
+
+Plantillas listas para usar, sin ningún secreto commiteado:
+[`remote-access/`](remote-access/) — `server/` corre en `trantor` (emite
+el cert nuevo), `client/` es la plantilla Docker que se copia a la máquina
+remota. Ver [`remote-access/README.md`](remote-access/README.md) para el
+detalle completo y por qué los secretos quedan siempre fuera de git.
+
+Una VPN corporativa full-tunnel con filtrado de salida agresivo puede
+bloquear igual el tráfico de Tailscale (directo o por su relay DERP sobre
+TCP 443) — antes de armar todo esto, probar `tailscale ping trantor` desde
+esa red (con la VPN activa) es la forma más barata de confirmar que hay
+salida.

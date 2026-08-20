@@ -1,0 +1,423 @@
+# Memory Backend Adapters Specification
+
+## Purpose
+
+Define the backend adapter contract and Phase 1's single Engram adapter, including degraded-backend behavior.
+
+## Requirements
+
+### Requirement: Adapter Contract
+
+Each backend adapter MUST declare its capabilities (e.g. supports store, supports search, supports health-check) and MUST implement a store interface, a search interface, and a health interface. The router MUST select backends per request only from adapters that declare the required capability.
+
+#### Scenario: Router selects only capable adapters
+
+- GIVEN a search request targets a namespace backed by two adapters, one of which does not declare search capability
+- WHEN the router dispatches the search
+- THEN only the adapter declaring search capability is queried
+
+### Requirement: Multi-Adapter Backend Support
+
+The system MUST support more than one concurrently registered backend adapter through the existing `memory_router.backends` entry-point group. Phase 1's "exactly one adapter" constraint is superseded: the Engram adapter (spec 011) remains the reference implementation of the `MemoryBackend` Protocol, and a second adapter — Hindsight — MUST be registrable through the same entry-point group with zero changes to `registry.py`, `contracts.py`, `app.py`, `permissions.py`, `namespaces.py`, `identity.py`, or `journal.py`.
+
+Each registered adapter MUST remain fully default-constructible (zero required constructor arguments; configuration sourced from environment), matching the instantiation pattern in `Registry._load_entry_points` (`entry_point.load()()`).
+
+#### Scenario: Engram adapter handles store and search
+
+- GIVEN a request is routed to the Engram adapter
+- WHEN the adapter performs store or search
+- THEN it communicates with Engram via its existing supported access path and returns results/status through the adapter contract
+
+#### Scenario: Two adapters register with no router-core changes
+
+- GIVEN both the Engram adapter and the Hindsight adapter are installed and declared under the `memory_router.backends` entry-point group
+- WHEN `Registry()` is constructed with no explicit `backends` argument
+- THEN `Registry.all_backends()` returns both adapter instances, and no file under router core (`app.py`, `registry.py`, `contracts.py`, `permissions.py`, `namespaces.py`, `identity.py`, `journal.py`) was modified to enable this
+
+#### Scenario: Registered adapter is default-constructible
+
+- GIVEN an adapter class is registered under the `memory_router.backends` entry-point group
+- WHEN the registry loads it via `entry_point.load()()` (zero arguments)
+- THEN construction succeeds without requiring any explicit constructor argument, with all configuration resolved from environment variables at construction time
+
+### Requirement: Degraded Backend — Store Queues Instead of Dropping
+
+When the target backend for a `store` request is unavailable, the router MUST queue/buffer the write and respond with an explicit "pending" status. The router MUST NOT respond with a committed-success status, MUST NOT respond with a generic failure status, and MUST NOT drop the write.
+
+#### Scenario: Store queued when backend is down
+
+- GIVEN the Engram backend is unavailable
+- WHEN a client issues `POST /memory/store` with a validly declared, permitted namespace
+- THEN the router queues the write and responds with an explicit "pending" status, not `200` committed and not a `5xx` failure
+
+### Requirement: Degraded Backend — Search Returns Partial Results
+
+When one or more backends required for a `search` are unavailable, the router MUST return available results from healthy backends plus an explicit per-backend "unavailable" marker. The router MUST NOT fail the entire search solely because one backend is down. This applies uniformly whether the unavailable backend is Engram, Hindsight, or knowledge-vault.
+
+(Previously: scoped only to Engram/Hindsight-style backends; now explicitly generalized to include search-only adapters like knowledge-vault.)
+
+#### Scenario: Partial search results with unavailable marker
+
+- GIVEN a search spans a namespace whose backend is unavailable while another in-scope namespace's backend is healthy
+- WHEN the router processes the search
+- THEN it returns results from the healthy backend along with an explicit marker identifying the unavailable backend, and the request does not fail outright
+
+#### Scenario: /global search fans out to both Engram and knowledge-vault
+
+- GIVEN both the Engram adapter and the `KnowledgeVaultBackend` adapter are registered and healthy
+- WHEN `Registry.backends_for(verb="search", namespace="/global")` is evaluated and the router dispatches the search
+- THEN both adapters are queried, their hits are merged into a single `SearchResult`, and existing Engram-only `/global` search tests continue to pass unmodified
+
+### Requirement: Hindsight Adapter
+
+The system MUST ship a `HindsightBackend` adapter implementing the `MemoryBackend` Protocol (`capabilities()`, `health()`, `store()`, `search()`) that reaches Hindsight over HTTP transport, not the stdio-subprocess transport used by the Engram adapter.
+
+#### Scenario: Hindsight adapter handles store and search over HTTP
+
+- GIVEN a request is routed to the Hindsight adapter
+- WHEN the adapter performs store or search
+- THEN it communicates with Hindsight via an HTTP client (not a subprocess) and returns results/status through the adapter contract
+
+### Requirement: Hindsight Declared Verbs Exclude Reflect
+
+`HindsightBackend.capabilities().verbs` MUST equal exactly `{"store", "search"}`. The adapter MUST NOT declare `"reflect"` as a supported verb.
+
+#### Scenario: Reflect is absent from declared verbs
+
+- GIVEN `HindsightBackend().capabilities()` is inspected
+- WHEN `verbs` is read
+- THEN it equals `frozenset({"store", "search"})` and `"reflect" not in verbs` holds
+
+### Requirement: Hindsight Namespace-to-Bank Mapping Without Cross-Backend Overlap
+
+`HindsightBackend` MUST map each Memory Router namespace to a Hindsight memory bank (`bank_id`), analogous to the Engram adapter's `ns:` topic-key prefix. The namespace patterns declared in `capabilities().namespaces` MUST NOT overlap the namespace patterns declared by the Engram adapter's `capabilities().namespaces`, so that the router's `Registry.backends_for()` selection never returns both adapters for the same namespace on the same verb, avoiding double-write on `store` and duplicate/fan-out results on `search`.
+
+#### Scenario: Namespace maps to a Hindsight bank
+
+- GIVEN a `store` or `search` request targets a namespace matched by `HindsightBackend.capabilities().namespaces`
+- WHEN the adapter builds the outbound Hindsight request
+- THEN the namespace is mapped to a corresponding `bank_id` and included in the request sent to Hindsight
+
+#### Scenario: No dual dispatch between Engram and Hindsight
+
+- GIVEN both adapters are registered
+- WHEN `Registry.backends_for(verb="store", namespace=ns)` or `Registry.backends_for(verb="search", namespace=ns)` is evaluated for any namespace `ns`
+- THEN at most one of {Engram adapter, Hindsight adapter} is present in the returned list, because their declared namespace patterns do not overlap
+
+### Requirement: Hindsight Config-Driven Auth
+
+`HindsightBackend` MUST support both local no-auth access and Hindsight Cloud bearer-token access, selected by configuration (environment variables) at construction time, with no hardcoded auth mode in code.
+
+#### Scenario: Local no-auth mode
+
+- GIVEN the adapter's environment configuration does not set a Hindsight auth token
+- WHEN the adapter issues an HTTP request to a local/no-auth Hindsight instance
+- THEN no `Authorization` header is sent and the request proceeds
+
+#### Scenario: Bearer-token mode
+
+- GIVEN the adapter's environment configuration sets a Hindsight Cloud auth token
+- WHEN the adapter issues an HTTP request
+- THEN the request includes an `Authorization: Bearer <token>` header sourced from that configuration
+
+### Requirement: Hindsight Transport Failure Integrates With Degraded-Backend Handling
+
+When the Hindsight adapter's HTTP transport fails (connection error, non-success status, or response decode failure), the adapter MUST raise `BackendUnavailableError("hindsight", ...)`. This MUST integrate, unchanged, with the existing dispatcher degraded-backend behavior: a `store` request queues as "pending" and a `search` request returns partial results with an explicit "unavailable" marker for the Hindsight backend.
+
+#### Scenario: Hindsight HTTP failure raises BackendUnavailableError
+
+- GIVEN the Hindsight HTTP endpoint is unreachable, returns a non-success status, or returns an undecodable response
+- WHEN the adapter attempts `store` or `search`
+- THEN it raises `BackendUnavailableError("hindsight", reason)` and does not raise any other exception type
+
+#### Scenario: Store queued when Hindsight is down
+
+- GIVEN the Hindsight backend is unavailable
+- WHEN a client issues `POST /memory/store` with a validly declared, permitted namespace routed to the Hindsight adapter
+- THEN the router queues the write and responds with an explicit "pending" status, not `200` committed and not a `5xx` failure
+
+#### Scenario: Partial search results when Hindsight is down
+
+- GIVEN a search spans a namespace whose backend is the unavailable Hindsight adapter, while another in-scope namespace's backend is healthy
+- WHEN the router processes the search
+- THEN it returns results from the healthy backend along with an explicit marker identifying Hindsight as unavailable, and the request does not fail outright
+
+### Requirement: Honcho Adapter
+
+The system MUST ship a `HonchoBackend` adapter that reaches Honcho's Dialectic API over HTTP transport (not stdio-subprocess), config-driven auth via environment variables, mirroring the Hindsight adapter's shape.
+
+`HonchoBackend.capabilities().verbs` MUST equal exactly `frozenset({"reflect"})`. `HonchoBackend.capabilities().namespaces` MUST equal exactly `("/user/master",)`. The adapter MUST NOT implement or declare `store` or `search`.
+
+#### Scenario: Honcho adapter declares reflect-only verbs
+
+- GIVEN `HonchoBackend().capabilities()` is inspected
+- WHEN `verbs` is read
+- THEN it equals `frozenset({"reflect"})` exactly, and `"store" not in verbs` and `"search" not in verbs` both hold
+
+#### Scenario: Honcho adapter declares only /user/master
+
+- GIVEN `HonchoBackend().capabilities()` is inspected
+- WHEN `namespaces` is read
+- THEN it equals `("/user/master",)` exactly, so `reflect` requests on `/projects/*` or `/agents/*` select no Honcho backend
+
+#### Scenario: Honcho adapter reaches Honcho over HTTP
+
+- GIVEN a `reflect` request is routed to the Honcho adapter
+- WHEN the adapter performs the Dialectic query
+- THEN it communicates with Honcho via an injectable HTTP transport, using bearer-token or no-auth per environment configuration, and returns a `ReflectResult`
+
+#### Scenario: Honcho transport failure raises BackendUnavailableError
+
+- GIVEN the Honcho HTTP endpoint is unreachable, returns a non-success status, or returns an undecodable response
+- WHEN the adapter attempts `reflect`
+- THEN it raises `BackendUnavailableError("honcho", reason)` and does not raise any other exception type
+
+### Requirement: Knowledge-Vault Adapter
+
+The system MUST ship a `KnowledgeVaultBackend` adapter satisfying `SearchOnlyBackend` that reaches the knowledge-vault search bridge over HTTP transport, config-driven auth via environment variables (bearer token), mirroring the Honcho/Cognee adapters' shape.
+
+`KnowledgeVaultBackend.capabilities().verbs` MUST equal exactly `frozenset({"search"})`. `KnowledgeVaultBackend.capabilities().namespaces` MUST equal exactly `("/global",)`. The adapter MUST NOT implement or declare `store` or `reflect`.
+
+#### Scenario: Knowledge-vault adapter declares search-only verbs
+
+- GIVEN `KnowledgeVaultBackend().capabilities()` is inspected
+- WHEN `verbs` is read
+- THEN it equals `frozenset({"search"})` exactly, and `"store" not in verbs` and `"reflect" not in verbs` both hold
+
+#### Scenario: Knowledge-vault adapter declares only /global
+
+- GIVEN `KnowledgeVaultBackend().capabilities()` is inspected
+- WHEN `namespaces` is read
+- THEN it equals `("/global",)` exactly, so `search` requests on `/projects/*`, `/agents/*`, or `/user/master` select no knowledge-vault backend
+
+#### Scenario: Knowledge-vault adapter reaches the search bridge over HTTP
+
+- GIVEN a `search` request is routed to the knowledge-vault adapter for `/global`
+- WHEN the adapter performs the query
+- THEN it communicates with the knowledge-vault search bridge via an injectable HTTP transport, sending a bearer-token `Authorization` header sourced from environment configuration, and returns a `SearchResult`
+
+### Requirement: Knowledge-Vault Transport Failure Integrates With Degraded-Backend Handling
+
+When the knowledge-vault adapter's HTTP transport fails (connection error, non-success status, or response decode failure), the adapter MUST raise `BackendUnavailableError("knowledge-vault", ...)`. This MUST integrate, unchanged, with the existing dispatcher degraded-backend behavior: a `search` request returns partial results with an explicit "unavailable" marker for the knowledge-vault backend, and the overall request does not fail outright.
+
+#### Scenario: Knowledge-vault HTTP failure raises BackendUnavailableError
+
+- GIVEN the knowledge-vault search bridge is unreachable, returns a non-success status, or returns an undecodable response
+- WHEN the adapter attempts `search`
+- THEN it raises `BackendUnavailableError("knowledge-vault", reason)` and does not raise any other exception type
+
+#### Scenario: Partial search results when knowledge-vault is down
+
+- GIVEN a `/global` search where the knowledge-vault backend is unavailable while the Engram backend is healthy
+- WHEN the router processes the search
+- THEN it returns results from Engram along with an explicit marker identifying knowledge-vault as unavailable, and the request does not fail outright
+
+### Requirement: Knowledge-Vault Empty or Unavailable Index Never Fabricates Hits
+
+When the vault has no notes, or the search bridge's index remains unavailable after its bounded rebuild attempt, the adapter MUST return zero hits. The adapter MUST NOT synthesize, guess, or otherwise fabricate a `SearchHit`.
+
+#### Scenario: Empty vault yields zero hits, not an error
+
+- GIVEN the knowledge-vault search bridge reports zero matching notes
+- WHEN the adapter performs `search`
+- THEN it returns a `SearchResult` with an empty `hits` tuple and no fabricated content
+
+### Requirement: Knowledge-Vault Hits Are Attributed and Score-Bearing
+
+Each `SearchHit` returned by the knowledge-vault adapter MUST carry `backend == "knowledge-vault"` so a caller can distinguish curated knowledge from session memory. `SearchHit.content` MUST be the note excerpt with the note id and title preserved (embedded in content or via an accompanying field), and `SearchHit.score` MUST be the score surfaced by the search bridge rather than a hardcoded `0.0`.
+
+#### Scenario: Hit carries knowledge-vault attribution
+
+- GIVEN a `/global` search returns a hit sourced from the knowledge-vault adapter
+- WHEN the hit is inspected
+- THEN `backend == "knowledge-vault"`, `content` includes the excerpt with the note id and title preserved, and `score` reflects the bridge's reported relevance score rather than `0.0`
+
+### Requirement: Reflect-Capable Backend Contract Is Separate From MemoryBackend
+
+The system MUST expose a narrow, capability-gated contract (a distinct Protocol) for backends that support `reflect`, separate from the existing `MemoryBackend` Protocol (`capabilities()`, `health()`, `store()`, `search()`).
+
+The `MemoryBackend` Protocol MUST NOT gain a default or no-op `reflect()` method. The dispatcher MUST reach a backend's `reflect()` only through registry selection gated on `capabilities().verbs` containing `"reflect"`, never by structurally assuming every `MemoryBackend` implements `reflect()`.
+
+Existing adapter conformance MUST remain unmodified and passing: `isinstance(EngramBackend(), MemoryBackend)` and `isinstance(HindsightBackend(), MemoryBackend)` MUST still hold true, and neither adapter is required to implement `reflect()`.
+
+#### Scenario: Reflect-capable Protocol is distinct from MemoryBackend
+
+- GIVEN the reflect-capable contract and `MemoryBackend` are inspected
+- WHEN their method sets are compared
+- THEN `MemoryBackend` has no `reflect()` method, and the reflect-capable contract is a separate Protocol that `HonchoBackend` satisfies
+
+#### Scenario: Engram and Hindsight conformance is unaffected
+
+- GIVEN `EngramBackend` and `HindsightBackend` as they exist before this change
+- WHEN `isinstance(EngramBackend(), MemoryBackend)` and `isinstance(HindsightBackend(), MemoryBackend)` are evaluated after this change
+- THEN both still return `True`, with their existing conformance tests unmodified
+
+#### Scenario: Dispatcher gates reflect dispatch on declared capability
+
+- GIVEN a registered backend does not declare `"reflect"` in `capabilities().verbs`
+- WHEN `Registry.backends_for(verb="reflect", namespace=...)` is evaluated
+- THEN that backend is never returned and the dispatcher never calls `reflect()` on it
+
+### Requirement: Cognee Adapter
+
+The system MUST ship a `CogneeBackend` adapter that reaches Cognee over HTTP transport (not stdio-subprocess), config-driven auth via environment variables, mirroring the Honcho adapter's shape.
+
+`CogneeBackend.capabilities().verbs` MUST equal exactly `frozenset({"reflect"})`. `CogneeBackend.capabilities().namespaces` MUST equal exactly `("/projects/*",)`. The adapter MUST NOT implement or declare `store` or `search`.
+
+#### Scenario: Cognee adapter declares reflect-only verbs
+
+- GIVEN `CogneeBackend().capabilities()` is inspected
+- WHEN `verbs` is read
+- THEN it equals `frozenset({"reflect"})` exactly, and `"store" not in verbs` and `"search" not in verbs` both hold
+
+#### Scenario: Cognee adapter declares only /projects/*
+
+- GIVEN `CogneeBackend().capabilities()` is inspected
+- WHEN `namespaces` is read
+- THEN it equals `("/projects/*",)` exactly, so `reflect` requests on `/user/master`, `/agents/*`, or `/global` select no Cognee backend
+
+#### Scenario: Cognee adapter reaches Cognee over HTTP using GRAPH_COMPLETION
+
+- GIVEN a `reflect` request is routed to the Cognee adapter for a project namespace
+- WHEN the adapter performs the query
+- THEN it communicates with Cognee via an injectable HTTP transport using the `GRAPH_COMPLETION` search type (not `CHUNKS`), using bearer-token or no-auth per environment configuration, and returns a `ReflectResult`
+
+#### Scenario: Cognee transport failure raises BackendUnavailableError
+
+- GIVEN the Cognee HTTP endpoint is unreachable, returns a non-success status, or returns an undecodable response
+- WHEN the adapter attempts `reflect`
+- THEN it raises `BackendUnavailableError("cognee", reason)` and does not raise any other exception type
+
+#### Scenario: Honcho and Cognee coexist on disjoint namespaces
+
+- GIVEN both `HonchoBackend` (`/user/master`) and `CogneeBackend` (`/projects/*`) are registered
+- WHEN `Registry.backends_for(verb="reflect", namespace=ns)` is evaluated for any namespace `ns`
+- THEN at most one of {Honcho adapter, Cognee adapter} is present in the returned list, because their declared namespace patterns do not overlap
+
+### Requirement: Cognee Empty-Graph Handling Never Fabricates a Conclusion
+
+When a `reflect` query against Cognee succeeds at the transport level but the underlying knowledge graph has no populated content relevant to the request, the adapter MUST return an explicit `ReflectResult` with `status == "empty"` and MUST NOT synthesize, guess, or otherwise fabricate a `Conclusion`. Since Cognee's `/recall` call is synchronous, the adapter MUST NOT report `"pending"` for this case; `"pending"` is reserved for an explicit async signal, which Cognee's synchronous call does not produce.
+
+#### Scenario: Empty graph yields explicit empty status
+
+- GIVEN a project's Cognee knowledge graph has no populated content
+- WHEN the adapter performs `reflect` on that project's namespace
+- THEN the call succeeds at the transport level and the adapter returns a `ReflectResult` with `status == "empty"` and no fabricated `Conclusion`
+
+#### Scenario: Unscored confidence on a successful conclusion
+
+- GIVEN Cognee's `GRAPH_COMPLETION` returns synthesized prose with no numeric confidence score
+- WHEN the adapter builds the `Conclusion`
+- THEN it sets `confidence=0.0` to represent "unscored", never inventing a non-zero score
+
+### Requirement: Cognee Namespace-to-Dataset Mapping, Fail-Closed, One Dataset Per Project
+
+`CogneeBackend` MUST map each `/projects/{name}` namespace to exactly one Cognee dataset dedicated to that project (one dataset per project), never a dataset shared across multiple projects. If a namespace cannot be resolved to a legal Cognee dataset/scope identifier (e.g. an illegal character set, or a nested namespace `/projects/{name}/{sub}` that cannot be unambiguously mapped to the parent project's scope), the adapter MUST fail closed and MUST NOT fall back to a shared or default dataset.
+
+#### Scenario: Project namespace maps to its own dataset
+
+- GIVEN a `reflect` request targets `/projects/alpha`
+- WHEN the adapter resolves the Cognee dataset
+- THEN it resolves to a dataset scoped exclusively to `alpha`, distinct from any other project's dataset
+
+#### Scenario: No cross-project leakage
+
+- GIVEN two distinct projects `alpha` and `beta` each have populated Cognee datasets
+- WHEN the adapter performs `reflect` on `/projects/alpha`
+- THEN the returned `Conclusion` is derived only from `alpha`'s dataset, never `beta`'s
+
+#### Scenario: Unresolvable namespace fails closed
+
+- GIVEN a namespace cannot be mapped to a legal Cognee dataset/scope identifier
+- WHEN the adapter attempts to resolve it
+- THEN the adapter fails closed (raises rather than falling back to a shared or default dataset) and no request reaches Cognee with an ambiguous scope
+
+### Requirement: Graphiti Adapter
+
+The system MUST ship a `GraphitiBackend` adapter that reaches Graphiti over HTTP transport (not stdio-subprocess), config-driven auth via environment variables, mirroring the Cognee adapter's shape (injectable `transport(method, url, headers, body)` seam).
+
+`GraphitiBackend.capabilities().verbs` MUST equal exactly `frozenset({"reflect"})`. `GraphitiBackend.capabilities().namespaces` MUST equal exactly `("/global", "/agents/*")`. The adapter MUST NOT implement or declare `store` or `search`.
+
+#### Scenario: Graphiti adapter declares reflect-only verbs
+
+- GIVEN `GraphitiBackend().capabilities()` is inspected
+- WHEN `verbs` is read
+- THEN it equals `frozenset({"reflect"})` exactly, and `"store" not in verbs` and `"search" not in verbs` both hold
+
+#### Scenario: Graphiti adapter declares only /global and /agents/*
+
+- GIVEN `GraphitiBackend().capabilities()` is inspected
+- WHEN `namespaces` is read
+- THEN it equals `("/global", "/agents/*")` exactly, so `reflect` requests on `/user/master` or `/projects/*` select no Graphiti backend
+
+#### Scenario: Graphiti adapter reaches Graphiti over HTTP using search_facts
+
+- GIVEN a `reflect` request is routed to the Graphiti adapter for `/global` or an `/agents/{name}` namespace
+- WHEN the adapter performs the query
+- THEN it communicates with Graphiti via an injectable HTTP transport calling `search_facts` (not `search_nodes`), using bearer-token or no-auth per environment configuration, and returns a `ReflectResult`
+
+#### Scenario: Graphiti transport failure raises BackendUnavailableError
+
+- GIVEN the Graphiti HTTP endpoint is unreachable, returns a non-success status, or returns an undecodable response
+- WHEN the adapter attempts `reflect`
+- THEN it raises `BackendUnavailableError("graphiti", reason)` and does not raise any other exception type
+
+#### Scenario: Graphiti, Honcho, and Cognee coexist on disjoint namespaces
+
+- GIVEN `HonchoBackend` (`/user/master`), `CogneeBackend` (`/projects/*`), and `GraphitiBackend` (`/global`, `/agents/*`) are all registered
+- WHEN `Registry.backends_for(verb="reflect", namespace=ns)` is evaluated for any namespace `ns`
+- THEN at most one of {Honcho adapter, Cognee adapter, Graphiti adapter} is present in the returned list, because their declared namespace patterns do not overlap
+
+### Requirement: Graphiti Empty-Graph Handling Never Fabricates a Conclusion
+
+When a `reflect` query against Graphiti succeeds at the transport level but `search_facts` returns no facts relevant to the request (e.g. an unpopulated graph, since no ingestion path exists in this change), the adapter MUST return an explicit `ReflectResult` with `status == "empty"` and MUST NOT synthesize, guess, or otherwise fabricate a `Conclusion`.
+
+#### Scenario: Empty or unpopulated graph yields explicit empty status
+
+- GIVEN a `group_id`'s Graphiti graph has no ingested episodes or no facts relevant to the query
+- WHEN the adapter performs `reflect` on that namespace
+- THEN the call succeeds at the transport level and the adapter returns a `ReflectResult` with `status == "empty"` and no fabricated `Conclusion`
+
+#### Scenario: Unscored confidence on a successful conclusion
+
+- GIVEN Graphiti's `search_facts` returns relevance-ranked facts with no calibrated confidence score
+- WHEN the adapter builds the `Conclusion`
+- THEN it sets `confidence=0.0` to represent "unscored", matching the Cognee adapter's convention, never inventing a non-zero score
+
+### Requirement: Graphiti Namespace-to-Group Mapping, Fail-Closed, One Group Per Agent
+
+`GraphitiBackend` MUST map `/global` to one fixed shared `group_id` and each `/agents/{name}` namespace to its own dedicated `group_id` (one group per agent, never a group shared across multiple agents). If a namespace cannot be resolved to a legal `group_id` (e.g. an illegal character set, or a nested namespace `/agents/{name}/{sub}` that cannot be unambiguously mapped to the parent agent's scope), the adapter MUST fail closed and MUST NOT fall back to a shared or default group.
+
+#### Scenario: /global maps to the fixed shared group
+
+- GIVEN a `reflect` request targets `/global`
+- WHEN the adapter resolves the Graphiti `group_id`
+- THEN it resolves to the one fixed shared group reserved for `/global`
+
+#### Scenario: Agent namespace maps to its own group
+
+- GIVEN a `reflect` request targets `/agents/alpha`
+- WHEN the adapter resolves the Graphiti `group_id`
+- THEN it resolves to a group scoped exclusively to `alpha`, distinct from any other agent's group
+
+#### Scenario: No cross-agent leakage
+
+- GIVEN two distinct agents `alpha` and `beta` each have populated Graphiti groups
+- WHEN the adapter performs `reflect` on `/agents/alpha`
+- THEN the returned `Conclusion` is derived only from `alpha`'s group, never `beta`'s
+
+#### Scenario: Unresolvable namespace fails closed
+
+- GIVEN a namespace cannot be mapped to a legal Graphiti `group_id` (illegal characters, or an unmappable nested `/agents/{name}/{sub}` path)
+- WHEN the adapter attempts to resolve it
+- THEN the adapter fails closed (raises rather than falling back to a shared or default group) and no request reaches Graphiti with an ambiguous scope
+
+### Requirement: Graphiti Only Currently-Valid Facts Are Returned
+
+Graphiti facts carry `valid_at`/`invalid_at` temporal-validity bounds. The adapter MUST filter to only currently-valid facts (facts whose validity interval includes the query time) when building a `Conclusion`. Expired facts MUST NOT be included, and the discarded temporal interval MUST NOT be silently reinterpreted as part of `Conclusion.content` beyond the fact's verbatim text.
+
+#### Scenario: Expired fact is excluded from the conclusion
+
+- GIVEN `search_facts` returns both a currently-valid fact and a fact whose `invalid_at` has passed
+- WHEN the adapter builds the `Conclusion`
+- THEN only the currently-valid fact's text is included, and the expired fact is excluded entirely

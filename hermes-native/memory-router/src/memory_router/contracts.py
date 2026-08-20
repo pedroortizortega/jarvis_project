@@ -113,3 +113,17 @@ class ReflectiveBackend(Protocol):
     def health(self) -> Health: ...
 
     def reflect(self, req: ReflectRequest) -> ReflectResult: ...
+
+
+@runtime_checkable
+class SearchOnlyBackend(Protocol):
+    """Narrow contract for read-only backends that serve `search` and
+    nothing else. Deliberately NOT `MemoryBackend` (which mandates
+    `store()`), same precedent as `ReflectiveBackend` — registry verb
+    selection is the dispatch gate, not Protocol conformance."""
+
+    def capabilities(self) -> Capabilities: ...
+
+    def health(self) -> Health: ...
+
+    def search(self, req: SearchRequest) -> SearchResult: ...

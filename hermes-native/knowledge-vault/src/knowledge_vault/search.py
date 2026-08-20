@@ -25,6 +25,7 @@ class VaultHit:
     note: str
     title: str
     excerpt: str
+    score: float = 0.0
 
 
 def search_vault(query, vault_directory, index_path, limit=5):
@@ -60,6 +61,7 @@ def search_vault(query, vault_directory, index_path, limit=5):
                 note.name,
                 fields.get("title") or note.stem,
                 excerpt[:EXCERPT] + ("…" if len(excerpt) > EXCERPT else ""),
+                hit.score,
             )
         )
     return hits

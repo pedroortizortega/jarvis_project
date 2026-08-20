@@ -1,0 +1,45 @@
+[Unit]
+Description=Knowledge vault read-only search bridge for memory-router
+Documentation=file:///opt/knowledge-vault/README.md
+After=network-online.target sys-subsystem-net-devices-cni0.device
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=knowledge-vault-search
+Group=knowledge-vault
+WorkingDirectory=/opt/knowledge-vault
+Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/vault
+Environment=KNOWLEDGE_VAULT_INDEX=/var/lib/knowledge-vault/index/index.json
+Environment=KNOWLEDGE_VAULT_SEARCH_HOST=10.42.0.1
+Environment=KNOWLEDGE_VAULT_SEARCH_PORT=8088
+Environment=KNOWLEDGE_VAULT_SEARCH_TIMEOUT_SECONDS=5
+Environment=KNOWLEDGE_VAULT_SEARCH_LIMIT_MAX=20
+# Bearer token read from $CREDENTIALS_DIRECTORY/search-token — never a repo
+# file, never an env var. Rotate by replacing the credential file.
+LoadCredential=search-token:/etc/knowledge-vault/search-token
+ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-search-serve
+Restart=on-failure
+RestartSec=5s
+
+# Read-only on vault and index; the publisher remains the sole writer to
+# either. No ReadWritePaths= anywhere — this unit never writes.
+ReadOnlyPaths=/opt/knowledge-vault/vault /var/lib/knowledge-vault/index
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

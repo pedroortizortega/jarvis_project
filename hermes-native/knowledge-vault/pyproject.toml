@@ -16,6 +16,7 @@ knowledge-vault-search = "knowledge_vault.search:main"
 knowledge-vault-decide = "knowledge_vault.decide:main"
 knowledge-vault-pending = "knowledge_vault.decide:list_main"
 knowledge-vault-review-sync = "knowledge_vault.review_sync:main"
+knowledge-vault-search-serve = "knowledge_vault.serve:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

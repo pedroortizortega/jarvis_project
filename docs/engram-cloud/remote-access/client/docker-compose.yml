@@ -1,0 +1,45 @@
+# Plantilla genérica — ver ../README.md antes de usar.
+#
+# Variables a completar en un .env al lado de este archivo (no committear
+# ese .env si contiene algo sensible; acá solo va el hostname público, no
+# hay secretos en variables de entorno de este compose):
+#   TS_HOSTNAME=<identidad, ej. laptop-trabajo>   # nombre visible en tu tailnet
+#   ENGRAM_INGRESS_HOST=<host del ingress, ej. trantor.tail07dff9.ts.net>
+#   ENGRAM_PROXY_PORT=7280                        # puerto local, cualquiera libre
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ${TS_HOSTNAME:?definir TS_HOSTNAME en .env}
+    environment:
+      - TS_HOSTNAME=${TS_HOSTNAME}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--accept-dns=true
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ENGRAM_PROXY_PORT:-7280}:${ENGRAM_PROXY_PORT:-7280}"
+
+  engram-proxy:
+    build: ./socat
+    network_mode: "service:tailscale"
+    depends_on:
+      - tailscale
+    volumes:
+      # Certificado + clave + CA de ESTA identidad, generados con
+      # server/generate-client-cert.sh y copiados acá por fuera de git.
+      # Ver ./identity/README.md.
+      - ./identity:/certs:ro
+    command:
+      - "TCP-LISTEN:${ENGRAM_PROXY_PORT:-7280},bind=0.0.0.0,fork,reuseaddr"
+      - "OPENSSL-CONNECT:${ENGRAM_INGRESS_HOST:?definir ENGRAM_INGRESS_HOST en .env}:443,cert=/certs/client.crt,key=/certs/client.key,cafile=/certs/ca.crt,verify=1"
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:

@@ -196,11 +196,14 @@ class Dispatcher:
         return {"namespace": namespace, "items": items, "unavailable": unavailable}
 
     def reflect(self, *, cn, bearer, role=None, namespace=None, query=None) -> dict:
-        """Read-oriented derived-conclusion query over a single `/user/master`
+        """Read-oriented derived-conclusion query over a single validated
         namespace. Runs the exact same identity -> namespace -> permission
         pipeline as store/search/context (never bypassed), authorizing the
-        "reflect" verb. Mirrors `context()` — single namespace, no
-        `_fallback_chain`, since `/user/master` has no parent.
+        "reflect" verb. Mirrors `context()` — one namespace, no
+        `_fallback_chain`: a derived conclusion is scoped to the namespace it
+        was derived from and is never inherited from a parent. Which
+        namespaces are reflect-capable is a registry/capabilities question,
+        not a dispatcher one; the dispatcher is namespace-agnostic here.
         """
         identity = self._authenticate(cn, bearer)
         namespace = self._validate_namespace(namespace)
@@ -239,6 +242,8 @@ class Dispatcher:
                 )
             elif result.status == "pending" and status != "ready":
                 status = "pending"
+            elif result.status == "empty" and status not in ("ready", "pending"):
+                status = "empty"
 
         if status == "no_backend" and unavailable:
             status = "degraded"

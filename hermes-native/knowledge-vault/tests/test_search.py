@@ -71,6 +71,14 @@ class SearchTests(unittest.TestCase):
             vault.mkdir()
             self.assertEqual([], search_vault("lo que sea", vault, Path(root) / "i.json"))
 
+    def test_a_hit_carries_the_underlying_retrieval_score(self):
+        with tempfile.TemporaryDirectory() as root:
+            vault = vault_with(root, NOTES)
+            results = search_vault("storage class local-path", vault, Path(root) / "index.json")
+            self.assertTrue(results)
+            self.assertIsInstance(results[0].score, float)
+            self.assertNotEqual(0.0, results[0].score)
+
 
 if __name__ == "__main__":
     unittest.main()

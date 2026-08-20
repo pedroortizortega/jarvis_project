@@ -105,6 +105,8 @@ class FakeReflectiveBackend:
             raise BackendUnavailableError(self._name, "simulated crash")
         if self._status == "pending":
             return ReflectResult(status="pending", backend=self._name)
+        if self._status == "empty":
+            return ReflectResult(status="empty", backend=self._name)
         conclusion = Conclusion(
             namespace=req.namespace, backend=self._name, content="derived belief"
         )
@@ -313,6 +315,57 @@ class DispatcherReflectTests(unittest.TestCase):
             )
         self.assertEqual("pending", result["status"])
         self.assertEqual([], result["conclusions"])
+
+    def test_empty_backend_reports_empty_status_not_no_backend(self):
+        # D-06: ReflectResult(status="empty") must surface as "empty", never
+        # be silently reported as "no_backend" — a backend was selected,
+        # reached, and answered.
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend(
+                name="cognee", namespaces=("/projects/*",), status="empty"
+            )
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/projects/x", query="x",
+            )
+        self.assertEqual("empty", result["status"])
+        self.assertNotEqual("no_backend", result["status"])
+        self.assertEqual([], result["conclusions"])
+
+    def test_ready_wins_over_empty_when_both_backends_registered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready_backend = FakeReflectiveBackend(
+                name="ready-one", namespaces=("/projects/*",), status="ready"
+            )
+            empty_backend = FakeReflectiveBackend(
+                name="empty-one", namespaces=("/projects/*",), status="empty"
+            )
+            dispatcher = make_reflect_dispatcher(
+                [ready_backend, empty_backend], journal_dir=directory
+            )
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/projects/x", query="x",
+            )
+        self.assertEqual("ready", result["status"])
+
+    def test_reflect_on_nested_project_namespace_returns_400_invalid_namespace(self):
+        # design.md F-1: /projects/a/b dies at validate_namespace before
+        # permissions, before the registry, before any adapter is reached.
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend(
+                name="cognee", namespaces=("/projects/*",), status="ready"
+            )
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            with self.assertRaises(DispatchError) as ctx:
+                dispatcher.reflect(
+                    cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                    namespace="/projects/a/b", query="x",
+                )
+        self.assertEqual(400, ctx.exception.status)
+        self.assertEqual("invalid_namespace", ctx.exception.error)
+        self.assertEqual(0, len(backend.reflect_calls))
 
     def test_reflect_never_touches_journal(self):
         with tempfile.TemporaryDirectory() as directory:

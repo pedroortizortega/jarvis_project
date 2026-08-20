@@ -174,13 +174,14 @@ class ReflectPermissionsTests(unittest.TestCase):
             )
 
     def test_reflect_denied_on_every_other_namespace_kind_for_all_roles(self):
+        # /projects is deliberately excluded here for jarvis and scientist:
+        # cognee-backend grants reflect on projects for those two roles.
+        # See ProjectsReflectPermissionsTests below for that coverage.
         cases = [
             ("jarvis", "hermes-gateway", "/global"),
-            ("jarvis", "hermes-gateway", "/projects/lector-ine"),
             ("jarvis", "hermes-gateway", "/agents/hermes-gateway"),
             ("jarvis", "hermes-gateway", "/agents/codex"),
             ("scientist", "opencode", "/global"),
-            ("scientist", "opencode", "/projects/lector-ine"),
             ("scientist", "opencode", "/agents/opencode"),
             ("scientist", "opencode", "/agents/codex"),
             ("coder", "codex", "/global"),
@@ -197,6 +198,81 @@ class ReflectPermissionsTests(unittest.TestCase):
                         namespace=namespace,
                         verb="reflect",
                     )
+
+
+class ProjectsReflectPermissionsTests(unittest.TestCase):
+    """cognee-backend: reflect on the `projects` namespace kind, granted to
+    `scientist` and `jarvis` only; `coder` stays denied."""
+
+    def test_jarvis_allowed_reflect_on_projects(self):
+        authorize(
+            role="jarvis",
+            identity_name="hermes-gateway",
+            namespace="/projects/x",
+            verb="reflect",
+        )
+
+    def test_scientist_allowed_reflect_on_projects(self):
+        authorize(
+            role="scientist",
+            identity_name="opencode",
+            namespace="/projects/x",
+            verb="reflect",
+        )
+
+    def test_coder_denied_reflect_on_projects(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder",
+                identity_name="codex",
+                namespace="/projects/x",
+                verb="reflect",
+            )
+
+    def test_reflect_still_denied_on_global_and_agents_for_all_roles(self):
+        cases = [
+            ("jarvis", "hermes-gateway", "/global"),
+            ("jarvis", "hermes-gateway", "/agents/hermes-gateway"),
+            ("scientist", "opencode", "/global"),
+            ("scientist", "opencode", "/agents/opencode"),
+            ("coder", "codex", "/global"),
+            ("coder", "codex", "/agents/codex"),
+        ]
+        for role, identity_name, namespace in cases:
+            with self.subTest(role=role, namespace=namespace):
+                with self.assertRaises(AuthorizationError):
+                    authorize(
+                        role=role,
+                        identity_name=identity_name,
+                        namespace=namespace,
+                        verb="reflect",
+                    )
+
+    def test_coder_store_and_search_on_projects_still_allowed(self):
+        # Regression: existing coder allow rules for store/search on
+        # projects are unaffected by adding reflect for other roles.
+        authorize(
+            role="coder", identity_name="codex", namespace="/projects/x", verb="store"
+        )
+        authorize(
+            role="coder", identity_name="codex", namespace="/projects/x", verb="search"
+        )
+
+    def test_scientist_search_on_projects_still_allowed(self):
+        authorize(
+            role="scientist",
+            identity_name="opencode",
+            namespace="/projects/x",
+            verb="search",
+        )
+
+    def test_jarvis_store_and_search_on_projects_still_allowed(self):
+        authorize(
+            role="jarvis", identity_name="hermes-gateway", namespace="/projects/x", verb="store"
+        )
+        authorize(
+            role="jarvis", identity_name="hermes-gateway", namespace="/projects/x", verb="search"
+        )
 
 
 if __name__ == "__main__":

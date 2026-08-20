@@ -54,6 +54,14 @@ class NamespaceValidationTests(unittest.TestCase):
         with self.assertRaises(NamespaceError):
             validate_namespace("/projects/")
 
+    def test_rejects_nested_project_namespace(self):
+        # design.md F-1: /projects/a/b is unreachable — _NAME_RE has no "/"
+        # in its character class, so the whole remainder ("a/b") fails to
+        # match and NamespaceError is raised here, before permissions,
+        # before the registry, before any adapter.
+        with self.assertRaises(NamespaceError):
+            validate_namespace("/projects/a/b")
+
 
 if __name__ == "__main__":
     unittest.main()

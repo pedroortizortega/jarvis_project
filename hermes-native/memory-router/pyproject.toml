@@ -13,6 +13,7 @@ memory-router-mcp = "memory_router.app:mcp_main"
 
 [project.entry-points."memory_router.backends"]
 engram = "memory_router.backends.engram:EngramBackend"
+hindsight = "memory_router.backends.hindsight:HindsightBackend"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

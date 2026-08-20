@@ -111,7 +111,7 @@ class EngramBackend:
         return Capabilities(
             name="engram",
             verbs=frozenset({"store", "search"}),
-            namespaces=("/global", "/user/master", "/projects/*", "/agents/*"),
+            namespaces=("/global", "/user/master", "/agents/*"),
             hierarchical_search=True,
         )
 

@@ -91,38 +91,38 @@ Decision needed before apply: No — resolved by explicit user confirmation (Ask
 
 ## Phase 11: model-panel — `alerts/ticker.py` delivery (D-09/D-10/D-16/D-17/D-19)
 
-- [ ] 11.1 RED: empty/absent secret or webhook URL → ticker never starts, zero POSTs attempted (transport stub fails the test if invoked)
-- [ ] 11.2 RED: body is serialized to bytes exactly once; that same byte string is both signed and posted as `content=` (capture request, compare to signed bytes)
-- [ ] 11.3 RED: `X-Webhook-Timestamp` header present on every POST, value within acceptable range of `time.time()`
-- [ ] 11.4 RED: transport raising `httpx.ConnectError`/timeout is logged and does not raise; ticker survives and ticks again on the next interval
-- [ ] 11.5 RED: non-2xx webhook response is treated as delivery failure — logged, not raised
-- [ ] 11.6 RED: one bad tick (e.g. `CodexShimClient` raising) does not end the ticker loop; only the stop `Event` ends it
-- [ ] 11.7 GREEN: implement `SessionAlertTicker` — `threading.Thread(daemon=True)` + `threading.Event`, 5s interval (`SESSION_ALERT_POLL_INTERVAL_SECONDS`), `try/except Exception: logger.exception(...); continue` around the whole tick body, explicit `httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0)`, dedicated thread never reusing `app.state.executor`
-- [ ] 11.8 RED: alert fires with no browser tab polling `/api/status` (server-side ticker scenario)
+- [x] 11.1 RED: empty/absent secret or webhook URL → ticker never starts, zero POSTs attempted (transport stub fails the test if invoked)
+- [x] 11.2 RED: body is serialized to bytes exactly once; that same byte string is both signed and posted as `content=` (capture request, compare to signed bytes)
+- [x] 11.3 RED: `X-Webhook-Timestamp` header present on every POST, value within acceptable range of `time.time()`
+- [x] 11.4 RED: transport raising `httpx.ConnectError`/timeout is logged and does not raise; ticker survives and ticks again on the next interval
+- [x] 11.5 RED: non-2xx webhook response is treated as delivery failure — logged, not raised
+- [x] 11.6 RED: one bad tick (e.g. `CodexShimClient` raising) does not end the ticker loop; only the stop `Event` ends it
+- [x] 11.7 GREEN: implement `SessionAlertTicker` — `threading.Thread(daemon=True)` + `threading.Event`, 5s interval (`SESSION_ALERT_POLL_INTERVAL_SECONDS`), `try/except Exception: logger.exception(...); continue` around the whole tick body, explicit `httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0)`, dedicated thread never reusing `app.state.executor`
+- [x] 11.8 RED: alert fires with no browser tab polling `/api/status` (server-side ticker scenario)
 
 ## Phase 12: model-panel — lifespan wiring (D-09)
 
-- [ ] 12.1 RED: `TestClient(app)` without a `with` block spawns no ticker thread (existing 20 test modules stay unaffected)
-- [ ] 12.2 RED: `with TestClient(app)` — lifespan start spawns the ticker thread; shutdown sets the stop `Event` and joins within a bounded timeout
-- [ ] 12.3 GREEN: add `lifespan=` to `FastAPI(...)` in `kubernetes/model-panel/app/main.py`; construct `SessionAlerter`/`SessionAlertTicker`, store as `app.state.session_alerter`
-- [ ] 12.4 Confirm `/api/status` handler is byte-unmodified — zero diff (D-08 structural guarantee)
+- [x] 12.1 RED: `TestClient(app)` without a `with` block spawns no ticker thread (existing 20 test modules stay unaffected)
+- [x] 12.2 RED: `with TestClient(app)` — lifespan start spawns the ticker thread; shutdown sets the stop `Event` and joins within a bounded timeout
+- [x] 12.3 GREEN: add `lifespan=` to `FastAPI(...)` in `kubernetes/model-panel/app/main.py`; construct `SessionAlerter`/`SessionAlertTicker`, store as `app.state.session_alerter`
+- [x] 12.4 Confirm `/api/status` handler is byte-unmodified — zero diff (D-08 structural guarantee)
 
 ## Phase 13: model-panel — D17/manifest regression (F-1/F-2, D-19)
 
-- [ ] 13.1 RED: `kubernetes/model-panel/app/clients/codex_shim.py` `ALLOWED_SESSION_STATES` still rejects `"backend_unreachable"`/`"unreachable"` (regression test only, zero code change)
-- [ ] 13.2 RED: `panel.js` `sessionStateClass` defaults to `"bad"` for the new states (regression test only, zero code change; F-2)
-- [ ] 13.3 RED: `kubernetes/codex-shim/deployment.yaml` has zero diff; no webhook secret reference anywhere in it
-- [ ] 13.4 RED: `kubernetes/model-panel/deployment.yaml` mounts `model-panel-webhook` Secret via `secretKeyRef`, sets `HERMES_WEBHOOK_URL`; `replicas == 1` / `strategy.type == Recreate` still hold (D-15 dependency)
-- [ ] 13.5 GREEN: update `kubernetes/model-panel/deployment.yaml` with the env var + `secretKeyRef`
+- [x] 13.1 RED: `kubernetes/model-panel/app/clients/codex_shim.py` `ALLOWED_SESSION_STATES` still rejects `"backend_unreachable"`/`"unreachable"` (regression test only, zero code change)
+- [x] 13.2 RED: `panel.js` `sessionStateClass` defaults to `"bad"` for the new states (regression test only, zero code change; F-2)
+- [x] 13.3 RED: `kubernetes/codex-shim/deployment.yaml` has zero diff; no webhook secret reference anywhere in it
+- [x] 13.4 RED: `kubernetes/model-panel/deployment.yaml` mounts `model-panel-webhook` Secret via `secretKeyRef`, sets `HERMES_WEBHOOK_URL`; `replicas == 1` / `strategy.type == Recreate` still hold (D-15 dependency)
+- [x] 13.5 GREEN: update `kubernetes/model-panel/deployment.yaml` with the env var + `secretKeyRef`
 
 ## Phase 14: model-panel — delta spec + specs companion + runbook
 
-- [ ] 14.1 Confirm `openspec/specs/session-degradation-alerting/spec.md` scenarios each map to a passing test from Phases 8-13
-- [ ] 14.2 Create `specs/020_codex_shim_session_alerts.md` numbered companion summarizing both capabilities, config surface, payload contract, threat matrix
-- [ ] 14.3 Create `docs/` runbook: Hermes route (`deliver_only: true`, `deliver: telegram`) provisioning + shared-secret setup steps (manual, non-code)
+- [x] 14.1 Confirm `openspec/specs/session-degradation-alerting/spec.md` scenarios each map to a passing test from Phases 8-13
+- [x] 14.2 Create `specs/020_codex_shim_session_alerts.md` numbered companion summarizing both capabilities, config surface, payload contract, threat matrix
+- [x] 14.3 Create `docs/` runbook: Hermes route (`deliver_only: true`, `deliver: telegram`) provisioning + shared-secret setup steps (manual, non-code)
 
 ## Phase 15: model-panel — final verification / PR 2 checkpoint
 
-- [ ] 15.1 Full model-panel suite green: `pytest kubernetes/model-panel/tests`
-- [ ] 15.2 Confirm no added latency/failure surfaces on `/api/status` (D-08/D-16 structural + timing assertions)
-- [ ] 15.3 PR 2 checkpoint — request `size:exception`, or fall back to the 2a/2b split per the Suggested Work Units table
+- [x] 15.1 Full model-panel suite green: `pytest kubernetes/model-panel/tests`
+- [x] 15.2 Confirm no added latency/failure surfaces on `/api/status` (D-08/D-16 structural + timing assertions)
+- [x] 15.3 PR 2 checkpoint — request `size:exception`, or fall back to the 2a/2b split per the Suggested Work Units table

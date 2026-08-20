@@ -29,6 +29,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -37,6 +38,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.alerts.ticker import SessionAlertTicker
 from app.clients.codex_shim import CodexShimClient, SwitchBlocked, assert_switch_to_cloud_allowed
 from app.clients.llama_router import LlamaRouterClient
 from app.clients.metrics_client import (
@@ -134,9 +136,8 @@ def create_app(
     namespace: str = NAMESPACE_DEFAULT,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    session_alert_ticker: Optional[SessionAlertTicker] = None,
 ) -> FastAPI:
-    app = FastAPI(title="model-panel", version="0.1.0")
-
     clients_holder: Dict[str, Any] = {}
 
     def get_clients() -> tuple[Any, Any, Any]:
@@ -203,6 +204,27 @@ def create_app(
                 "GPU_EXPORTER_BASE_URL", DEFAULT_GPU_EXPORTER_BASE_URL
             ),
         )
+
+    # D-09/D-19: independent server-side ticker, off every request path.
+    # `session_alert_ticker` is fail-closed by construction unless both
+    # HERMES_WEBHOOK_URL and MODEL_PANEL_WEBHOOK_SECRET are set — deploying
+    # this code without them starts no thread and changes no behavior.
+    ticker = session_alert_ticker or SessionAlertTicker(
+        get_session_status=shim_client.get_session_status,
+        webhook_url=os.environ.get("HERMES_WEBHOOK_URL", ""),
+        webhook_secret=os.environ.get("MODEL_PANEL_WEBHOOK_SECRET", ""),
+    )
+
+    @asynccontextmanager
+    async def lifespan(app_instance: FastAPI):
+        app_instance.state.session_alerter = ticker.alerter
+        ticker.start()
+        try:
+            yield
+        finally:
+            ticker.stop(timeout=5.0)
+
+    app = FastAPI(title="model-panel", version="0.1.0", lifespan=lifespan)
 
     app.state.state_store = store
     app.state.codex_shim_client = shim_client

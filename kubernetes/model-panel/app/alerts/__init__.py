@@ -1,6 +1,6 @@
-"""Session-degradation alerting: pure HMAC signing and the transition/debounce
-state machine (Unit 2a). The daemon-thread ticker and FastAPI lifespan wiring
-(Unit 2b) land in a later change and are not part of this module yet.
+"""Session-degradation alerting: pure HMAC signing, the transition/debounce
+state machine, and the daemon-thread ticker that polls session state and
+delivers signed webhook alerts.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from app.alerts.state import (
     AlertDecision,
     SessionAlerter,
 )
+from app.alerts.ticker import SessionAlertTicker
 
 __all__ = [
     "sign_v2",
@@ -21,4 +22,5 @@ __all__ = [
     "SESSION_ALERT_SUSTAIN_SECONDS",
     "AlertDecision",
     "SessionAlerter",
+    "SessionAlertTicker",
 ]

@@ -196,6 +196,8 @@ instead of the runtime class, and `hostNetwork: true` on node-exporter):
 | `LLAMA_ROUTER_BASE_URL` | `http://llama-router.llms.svc.cluster.local:8080/v1` | Local target |
 | `NODE_EXPORTER_BASE_URL` | `http://node-exporter.llms.svc.cluster.local:9100` | CPU/RAM source |
 | `GPU_EXPORTER_BASE_URL` | `http://nvidia-gpu-exporter.llms.svc.cluster.local:9835` | VRAM source |
+| `HERMES_WEBHOOK_URL` | *(required for alerting, from `deployment.yaml`)* | Hermes `deliver_only` route the session-alert ticker POSTs to; empty/unset means the ticker never starts (fail-closed, D-19) |
+| `MODEL_PANEL_WEBHOOK_SECRET` | *(required for alerting, from Secret `model-panel-webhook`)* | HMAC-SHA256 signing key for `X-Webhook-Signature-V2` — see [session alerts runbook](../production/model-panel-session-alerts-runbook.md) |
 
 The exporter URLs are also hardcoded as `DEFAULT_*` constants in
 `metrics_client.py` — the env vars in `deployment.yaml` are redundant with
@@ -209,6 +211,15 @@ the pattern already used for `CODEX_SHIM_BASE_URL`/`LLAMA_ROUTER_BASE_URL`.
 ```bash
 kubectl -n llms create secret generic model-panel-auth \
   --from-literal=bearer="$(openssl rand -hex 32)"
+```
+
+Optional — only needed for Telegram session-degradation alerts (see the
+[session alerts runbook](../production/model-panel-session-alerts-runbook.md)
+for the full setup including the Hermes-side route):
+
+```bash
+kubectl -n llms create secret generic model-panel-webhook \
+  --from-literal=secret="$(openssl rand -hex 32)"
 ```
 
 Then:

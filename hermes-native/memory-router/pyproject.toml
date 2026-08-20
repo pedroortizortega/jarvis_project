@@ -16,6 +16,7 @@ engram = "memory_router.backends.engram:EngramBackend"
 hindsight = "memory_router.backends.hindsight:HindsightBackend"
 honcho = "memory_router.backends.honcho:HonchoBackend"
 cognee = "memory_router.backends.cognee:CogneeBackend"
+knowledge-vault = "memory_router.backends.knowledge_vault:KnowledgeVaultBackend"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

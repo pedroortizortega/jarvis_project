@@ -175,14 +175,16 @@ class ReflectPermissionsTests(unittest.TestCase):
 
     def test_reflect_denied_on_every_other_namespace_kind_for_all_roles(self):
         # /projects is deliberately excluded here for jarvis and scientist:
-        # cognee-backend grants reflect on projects for those two roles.
-        # See ProjectsReflectPermissionsTests below for that coverage.
+        # cognee-backend grants reflect on projects for those two roles. See
+        # ProjectsReflectPermissionsTests below for that coverage.
+        #
+        # /global and agents_self/agents_other are deliberately excluded for
+        # jarvis (all three) and scientist (global, agents_self):
+        # graphiti-backend grants reflect there. See
+        # GraphitiReflectPermissionsTests below for that coverage. scientist
+        # stays denied on agents_other (cross-agent reflect is jarvis-only),
+        # so that one case remains here.
         cases = [
-            ("jarvis", "hermes-gateway", "/global"),
-            ("jarvis", "hermes-gateway", "/agents/hermes-gateway"),
-            ("jarvis", "hermes-gateway", "/agents/codex"),
-            ("scientist", "opencode", "/global"),
-            ("scientist", "opencode", "/agents/opencode"),
             ("scientist", "opencode", "/agents/codex"),
             ("coder", "codex", "/global"),
             ("coder", "codex", "/projects/lector-ine"),
@@ -229,12 +231,12 @@ class ProjectsReflectPermissionsTests(unittest.TestCase):
                 verb="reflect",
             )
 
-    def test_reflect_still_denied_on_global_and_agents_for_all_roles(self):
+    def test_reflect_still_denied_on_global_and_agents_for_coder(self):
+        # jarvis and scientist are deliberately excluded here: graphiti-backend
+        # grants them reflect on global and agents_self. See
+        # GraphitiReflectPermissionsTests below for that coverage. coder
+        # remains denied everywhere reflect is concerned.
         cases = [
-            ("jarvis", "hermes-gateway", "/global"),
-            ("jarvis", "hermes-gateway", "/agents/hermes-gateway"),
-            ("scientist", "opencode", "/global"),
-            ("scientist", "opencode", "/agents/opencode"),
             ("coder", "codex", "/global"),
             ("coder", "codex", "/agents/codex"),
         ]
@@ -273,6 +275,99 @@ class ProjectsReflectPermissionsTests(unittest.TestCase):
         authorize(
             role="jarvis", identity_name="hermes-gateway", namespace="/projects/x", verb="search"
         )
+
+
+class GraphitiReflectPermissionsTests(unittest.TestCase):
+    """graphiti-backend: reflect on `global` and `agents_self` granted to
+    `scientist` and `jarvis`; `agents_other` reflect granted to `jarvis`
+    only. `coder` stays denied everywhere."""
+
+    def test_jarvis_allowed_reflect_on_global(self):
+        authorize(
+            role="jarvis", identity_name="hermes-gateway", namespace="/global", verb="reflect"
+        )
+
+    def test_scientist_allowed_reflect_on_global(self):
+        authorize(
+            role="scientist", identity_name="opencode", namespace="/global", verb="reflect"
+        )
+
+    def test_coder_denied_reflect_on_global(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder", identity_name="codex", namespace="/global", verb="reflect"
+            )
+
+    def test_jarvis_allowed_reflect_on_own_agent_namespace(self):
+        authorize(
+            role="jarvis",
+            identity_name="hermes-gateway",
+            namespace="/agents/hermes-gateway",
+            verb="reflect",
+        )
+
+    def test_scientist_allowed_reflect_on_own_agent_namespace(self):
+        authorize(
+            role="scientist",
+            identity_name="opencode",
+            namespace="/agents/opencode",
+            verb="reflect",
+        )
+
+    def test_coder_denied_reflect_on_own_agent_namespace(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder",
+                identity_name="codex",
+                namespace="/agents/codex",
+                verb="reflect",
+            )
+
+    def test_jarvis_allowed_reflect_on_another_agents_namespace(self):
+        authorize(
+            role="jarvis",
+            identity_name="hermes-gateway",
+            namespace="/agents/other-agent",
+            verb="reflect",
+        )
+
+    def test_scientist_denied_reflect_on_another_agents_namespace(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="scientist",
+                identity_name="opencode",
+                namespace="/agents/other-agent",
+                verb="reflect",
+            )
+
+    def test_coder_denied_reflect_on_another_agents_namespace(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder",
+                identity_name="codex",
+                namespace="/agents/other-agent",
+                verb="reflect",
+            )
+
+    def test_coder_existing_verb_grants_unaffected_by_graphiti_reflect_rows(self):
+        # Regression: coder's pre-existing store/search grants on global and
+        # agents_self, plus its denial on agents_other, are untouched.
+        authorize(role="coder", identity_name="codex", namespace="/global", verb="search")
+        authorize(
+            role="coder", identity_name="codex", namespace="/agents/codex", verb="store"
+        )
+        authorize(
+            role="coder", identity_name="codex", namespace="/agents/codex", verb="search"
+        )
+        with self.assertRaises(AuthorizationError):
+            authorize(role="coder", identity_name="codex", namespace="/global", verb="store")
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder",
+                identity_name="codex",
+                namespace="/agents/other-agent",
+                verb="store",
+            )
 
 
 if __name__ == "__main__":

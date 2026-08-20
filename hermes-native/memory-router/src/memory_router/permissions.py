@@ -41,18 +41,18 @@ _ROLE_TABLE: dict[str, dict[str, frozenset[str]]] = {
         "agents_other": frozenset(),
     },
     "scientist": {
-        "global": frozenset({"store", "search"}),
+        "global": frozenset({"store", "search", "reflect"}),
         "user_master": frozenset({"search", "reflect"}),
         "projects": frozenset({"search", "reflect"}),
-        "agents_self": frozenset({"store", "search"}),
+        "agents_self": frozenset({"store", "search", "reflect"}),
         "agents_other": frozenset(),
     },
     "jarvis": {
-        "global": frozenset({"store", "search"}),
+        "global": frozenset({"store", "search", "reflect"}),
         "user_master": frozenset({"store", "search", "reflect"}),
         "projects": frozenset({"store", "search", "reflect"}),
-        "agents_self": frozenset({"store", "search"}),
-        "agents_other": frozenset({"store", "search"}),
+        "agents_self": frozenset({"store", "search", "reflect"}),
+        "agents_other": frozenset({"store", "search", "reflect"}),
     },
 }
 

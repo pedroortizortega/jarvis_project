@@ -29,6 +29,7 @@ from memory_router.contracts import (
     SearchResult,
     StoreResult,
 )
+from memory_router.backends.knowledge_vault import KnowledgeVaultBackend
 from memory_router.journal import Journal
 from memory_router.registry import Registry
 
@@ -233,6 +234,46 @@ class DispatcherSearchTests(unittest.TestCase):
                     namespace="/agents/hermes-gateway", query="x",
                 )
         self.assertEqual(403, ctx.exception.status)
+
+
+class KnowledgeVaultStubTransport:
+    """Answers every call with a single canned `/search` response."""
+
+    def __call__(self, method, url, headers, body):
+        return 200, json.dumps(
+            {"hits": [{"note": "0007-x.md", "title": "Some Title", "excerpt": "excerpt", "score": 0.9}]}
+        ).encode("utf-8")
+
+
+class GlobalCoexistenceTests(unittest.TestCase):
+    """The headline regression: Engram and knowledge-vault coexist on
+    `/global`, merged by `Dispatcher.search()` with zero `app.py`/
+    `registry.py` diff (design.md F-1/F-2)."""
+
+    def test_global_search_merges_hits_from_both_backends(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake_engram = FakeBackend(name="engram", namespaces=("/global",), hits=["engram hit"])
+            knowledge_vault = KnowledgeVaultBackend(
+                transport=KnowledgeVaultStubTransport(), base_url="http://kv"
+            )
+            registry = Registry(backends=[fake_engram, knowledge_vault])
+            journal = Journal(Path(directory) / "journal.ndjson")
+            dispatcher = Dispatcher(
+                registry=registry,
+                journal=journal,
+                cn_to_identity=CN_TO_IDENTITY,
+                bearer_by_identity=BEARER_BY_IDENTITY,
+            )
+            result = dispatcher.search(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/global", query="deploy",
+            )
+
+        self.assertEqual(2, len(result["hits"]))
+        self.assertEqual(
+            {"engram", "knowledge-vault"}, {hit["backend"] for hit in result["hits"]}
+        )
+        self.assertEqual([], result["unavailable"])
 
 
 class ExplodingJournal:

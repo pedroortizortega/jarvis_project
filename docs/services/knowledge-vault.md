@@ -119,7 +119,7 @@ Code's Mermaid preview extensions). They're confirmed **not** working on
 github.com — GitHub's Content Security Policy blocks the navigation
 outright, a long-standing, unresolved platform limitation (see
 [github.com/orgs/community/discussions/17545](https://github.com/orgs/community/discussions/17545)).
-On GitHub, use the "The 5 systemd units" table below instead.
+On GitHub, use the "The 6 systemd units" table below instead.
 
 Only `knowledge-vault-publisher.service` writes to the canonical vault — see
 [Safety model](#safety-model) for why that's enforced twice (file
@@ -148,10 +148,12 @@ is an explicit stand-in, documented in its own docstring as something to
 delete "once the proposal API owns approval records." Don't design around it
 as a permanent component.
 
-## The 5 systemd units
+## The 6 systemd units
 
-All units are `Type=oneshot`, driven by a paired `.timer`, `User=knowledge-vault-*`,
-`Group=knowledge-vault`. None are enabled by `install-host.sh`.
+Five of the six are `Type=oneshot`, driven by a paired `.timer`,
+`User=knowledge-vault-*`, `Group=knowledge-vault`; `knowledge-vault-search`
+is `Type=simple` (a long-running server, no timer). None are enabled by
+`install-host.sh`.
 
 | Unit | Timer (boot / repeat) | Does | Allowed to touch |
 |---|---|---|---|
@@ -160,17 +162,22 @@ All units are `Type=oneshot`, driven by a paired `.timer`, `User=knowledge-vault
 | `knowledge-vault-publisher` | 4min / 3min | The **only** unit that writes `/opt/knowledge-vault/vault`; renders OKF envelope (id, title, aliases, timestamp), writes idempotently | RW vault, `publisher/` state; RO `approved/` |
 | `knowledge-vault-mirror` | 5min / 10min | Copies published notes into a git working tree, commits, pushes to the bare repo at `/srv/git/knowledge-vault.git` | RO vault; RW `mirror/`, `/srv/git/knowledge-vault.git` |
 | `knowledge-vault-review-sync` | 3min / 2min | Syncs `pending/` to/from the bare repo's `pending` branch over local git (no network — the phone reaches the bare repo itself over SSH) | RW `review/`, `pending/`, `/srv/git/knowledge-vault.git`; **`PrivateNetwork=yes`** |
+| `knowledge-vault-search` | none (`Type=simple`, long-running) | Read-only HTTP search bridge (`POST /search`, `GET /healthz`) exposing `search_vault()` to memory-router's `KnowledgeVaultBackend` adapter over the `cni0` gateway; bearer-auth via `LoadCredential=`, bounded inline index rebuild (design.md D-02/D-03) | RO vault, index; **no `ReadWritePaths=` at all** |
 
-All five share the same hardening baseline: `NoNewPrivileges=yes`,
+All six share the same hardening baseline: `NoNewPrivileges=yes`,
 `PrivateTmp=yes`, `PrivateDevices=yes`, `ProtectSystem=strict`,
 `ProtectHome=yes`, `ProtectKernelTunables/Modules/ControlGroups=yes`,
 `RestrictNamespaces=yes`, `LockPersonality=yes`, `SystemCallArchitectures=native`,
 and an explicit `UMask` (never inherited — see [Safety model](#safety-model)).
-`publisher` and `review` additionally set `MemoryDenyWriteExecute=yes`.
+`publisher`, `review`, and `search` additionally set `MemoryDenyWriteExecute=yes`.
 `mirror` and `review-sync` deliberately **omit** `RestrictSUIDSGID` — the
 shared bare repo is `core.sharedRepository=group`, which makes git mark
 directories setgid so both the mirror and review-sync accounts can write to
 it; `RestrictSUIDSGID` would turn every push into `EPERM`.
+
+`knowledge-vault-search` is the only unit reachable over the network (a
+node-local address only — see [Safety model](#safety-model)); every other
+unit only ever touches the local filesystem or the bare git repo.
 
 `review.service` is the one unit with `InaccessiblePaths=/opt/knowledge-vault/vault`
 set explicitly — a second, kernel-enforced guarantee on top of the fact that
@@ -235,6 +242,21 @@ different stages:
     (`PublisherLocked`) fences out a second concurrent publisher process
     entirely.
 
+**Why `knowledge-vault-search` cannot write anything:** the unit's
+`ReadOnlyPaths=` covers both the vault directory and the index path, and it
+declares **no `ReadWritePaths=` at all** — not even a scratch directory. The
+handler code itself has no write path either: it exposes exactly `POST
+/search` and `GET /healthz`, no `do_PUT`/`do_DELETE`, and a mutating request
+to any other path/method is rejected before touching the vault. Bound to the
+`cni0` gateway address (`10.42.0.1`, reachable only from pods on this node,
+never from the LAN — design.md D-06), so the new network surface this unit
+introduces is both read-only and node-local by construction. `POST /search`
+requires a `Bearer` token sourced from `LoadCredential=`
+(`$CREDENTIALS_DIRECTORY`, never a repo file, never an env var), checked with
+`hmac.compare_digest` before any vault read; `GET /healthz` is the one
+unauthenticated route, for Kubernetes-style liveness probing, and touches no
+vault file either.
+
 **What "atomic" means here:** file writes, not git commits — `atomic.py`'s
 `write_atomic()` writes to a `NamedTemporaryFile` in the *same directory* as
 the target (so the rename is same-filesystem), `fsync`s the file, `chmod`s it
@@ -266,7 +288,12 @@ themselves):
 | `KNOWLEDGE_VAULT_MIRROR_REMOTE` | mirror | `/srv/git/knowledge-vault.git` |
 | `KNOWLEDGE_VAULT_REVIEW_REPO` | review-sync | `/var/lib/knowledge-vault/review/repo` |
 | `KNOWLEDGE_VAULT_REVIEW_REMOTE` | review-sync | `/srv/git/knowledge-vault.git` |
-| `KNOWLEDGE_VAULT_INDEX` | search | not set by any unit — CLI/manual use |
+| `KNOWLEDGE_VAULT_INDEX` | search, search-serve | CLI/manual use; `/var/lib/knowledge-vault/index/index.json` for `search-serve` |
+| `KNOWLEDGE_VAULT_SEARCH_HOST` | search-serve | `10.42.0.1` (the `cni0` gateway — design.md D-06) |
+| `KNOWLEDGE_VAULT_SEARCH_PORT` | search-serve | `8088` |
+| `KNOWLEDGE_VAULT_SEARCH_TIMEOUT_SECONDS` | search-serve | `5` — bounds an inline stale-index rebuild (D-02/D-03); a timed-out rebuild returns `503`, not a hang |
+| `KNOWLEDGE_VAULT_SEARCH_LIMIT_MAX` | search-serve | `20` — caller `limit` is clamped into `1..MAX` |
+| search-serve bearer token | search-serve | `LoadCredential=search-token:/etc/knowledge-vault/search-token`, read from `$CREDENTIALS_DIRECTORY` — never an env var, never a repo file |
 | `KNOWLEDGE_VAULT_AGENT` | propose | set by the caller (e.g. `jarvis`) |
 | `KNOWLEDGE_VAULT_REVIEWER` | decide | reviewer identity for the recorded decision |
 | `KNOWLEDGE_VAULT_DECISION_SOURCE` | decide | optional, e.g. `telegram`/`phone` |
@@ -287,13 +314,15 @@ python3 -m venv /tmp/venv-doc-kv
 /tmp/venv-doc-kv/bin/python -m unittest discover -s tests -v
 ```
 
-Verified: **96 tests, all passing**, across the 12 files under `tests/`
+Verified: **113 tests, all passing**, across the 13 files under `tests/`
 (`test_decide.py`, `test_mirror.py`, `test_note.py`, `test_outbox.py`,
 `test_pending_list.py`, `test_propose.py`, `test_publisher.py`,
 `test_retrieval.py`, `test_review.py`, `test_review_run.py`,
-`test_review_sync.py`, `test_search.py`). No network or filesystem
-permissions beyond a scratch venv are needed — the suite uses `tempfile`
-directories throughout, not the real `/var/lib/knowledge-vault` paths.
+`test_review_sync.py`, `test_search.py`, `test_serve.py`). No network or
+filesystem permissions beyond a scratch venv are needed — the suite uses
+`tempfile` directories throughout, not the real `/var/lib/knowledge-vault`
+paths; `test_serve.py` spins up a real `ThreadingHTTPServer` on `127.0.0.1`
+with an ephemeral port, never the configured `10.42.0.1` bind address.
 
 ## How an agent proposes a note
 

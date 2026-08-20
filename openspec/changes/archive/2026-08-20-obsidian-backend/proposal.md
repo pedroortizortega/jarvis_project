@@ -86,16 +86,16 @@ Registration-only on the router side. (1) Remove the entry-point line, `backends
 
 ## Success Criteria
 
-- [ ] `KnowledgeVaultBackend.capabilities().verbs == frozenset({"search"})`; `"store"` and `"reflect"` asserted absent.
-- [ ] `capabilities().namespaces == ("/global",)`; search on `/projects/x`, `/agents/x`, `/user/master` does not select it.
-- [ ] `isinstance(backend, SearchOnlyBackend)` holds; `isinstance(backend, MemoryBackend)` is False.
-- [ ] A `/global` search selects **both** Engram and knowledge-vault and merges their hits; existing Engram `/global` tests pass unmodified.
-- [ ] `app.py`, `registry.py`, and `permissions.py` have zero functional diff.
-- [ ] Empty vault or unavailable index yields zero hits with no error and no fabricated content.
-- [ ] Transport failure raises `BackendUnavailableError` and surfaces in `unavailable[]` as degraded, never as request failure.
-- [ ] The HTTP surface exposes no write verb; a `POST` that would mutate the vault is not routable.
-- [ ] An unauthenticated request to the search service is rejected.
-- [ ] Each `SearchHit` carries `backend="knowledge-vault"` so a caller can tell curated knowledge from session memory.
+- [x] `KnowledgeVaultBackend.capabilities().verbs == frozenset({"search"})`; `"store"` and `"reflect"` asserted absent.
+- [x] `capabilities().namespaces == ("/global",)`; search on `/projects/x`, `/agents/x`, `/user/master` does not select it.
+- [x] `isinstance(backend, SearchOnlyBackend)` holds; `isinstance(backend, MemoryBackend)` is False.
+- [x] A `/global` search selects **both** Engram and knowledge-vault and merges their hits; existing Engram `/global` tests pass unmodified.
+- [x] `app.py`, `registry.py`, and `permissions.py` have zero functional diff.
+- [x] Empty vault or unavailable index yields zero hits with no error and no fabricated content.
+- [x] Transport failure raises `BackendUnavailableError` and surfaces in `unavailable[]` as degraded, never as request failure.
+- [x] The HTTP surface exposes no write verb; a `POST` that would mutate the vault is not routable.
+- [x] An unauthenticated request to the search service is rejected.
+- [x] Each `SearchHit` carries `backend="knowledge-vault"` so a caller can tell curated knowledge from session memory.
 
 ## Proposal question round (open questions for `sdd-design`)
 

@@ -67,27 +67,27 @@ Decision needed before apply: No — resolved by explicit user confirmation (Ask
 
 ## Phase 8: model-panel — `alerts/signing.py` (pure, D-18)
 
-- [ ] 8.1 RED: `sign_v2(secret, body, ts)` equals an independently computed `hmac.new(secret.encode(), ts.encode()+b"."+body, sha256).hexdigest()` known vector
-- [ ] 8.2 GREEN: implement `sign_v2` in `kubernetes/model-panel/app/alerts/signing.py`
-- [ ] 8.3 RED: signature covers the exact posted bytes — re-serializing the same logical payload with different key order/separators produces a mismatching signature (regression against double-`json.dumps`)
+- [x] 8.1 RED: `sign_v2(secret, body, ts)` equals an independently computed `hmac.new(secret.encode(), ts.encode()+b"."+body, sha256).hexdigest()` known vector
+- [x] 8.2 GREEN: implement `sign_v2` in `kubernetes/model-panel/app/alerts/signing.py`
+- [x] 8.3 RED: signature covers the exact posted bytes — re-serializing the same logical payload with different key order/separators produces a mismatching signature (regression against double-`json.dumps`)
 
 ## Phase 9: model-panel — `alerts/state.py` transition machine (D-12/D-13/D-14)
 
-- [ ] 9.1 RED: non-alert-worthy state, `degraded_since is None` → stays `None`, emits `"none"`
-- [ ] 9.2 RED: alert-worthy state, first sighting → `degraded_since` set to `now`, emits `"none"`
-- [ ] 9.3 RED: same alert-worthy state, `now - since < 10` → unchanged, emits `"none"`
-- [ ] 9.4 RED: same alert-worthy state, `now - since >= 10` → emits `"degraded"` exactly once (9.9s emits nothing, 10.0s emits exactly one)
-- [ ] 9.5 RED: already-alerted state, 100 further ticks → emits `"none"` every time (one-shot, D-14)
-- [ ] 9.6 RED: different alert-worthy state (e.g. `refresh_failed` → `expired_needs_relogin`) resets `degraded_since`, clears `alerted_state`, re-arms, fires again after 10s
-- [ ] 9.7 RED: `valid` after a prior alert → emits `"recovery"` exactly once, re-arms
-- [ ] 9.8 RED: `valid`/`rate_limited`/`not_configured` without a prior alert → emits `"none"`, no recovery notice
-- [ ] 9.9 RED: `rate_limited`/`not_configured` sustained for any duration never alert (Excluded States scenario)
-- [ ] 9.10 GREEN: implement `ALERT_WORTHY_STATES`, `SESSION_ALERT_SUSTAIN_SECONDS = 10.0`, `AlertDecision`, `SessionAlerter.observe()` in `kubernetes/model-panel/app/alerts/state.py`, using injected `time.monotonic()` `now`
+- [x] 9.1 RED: non-alert-worthy state, `degraded_since is None` → stays `None`, emits `"none"`
+- [x] 9.2 RED: alert-worthy state, first sighting → `degraded_since` set to `now`, emits `"none"`
+- [x] 9.3 RED: same alert-worthy state, `now - since < 10` → unchanged, emits `"none"`
+- [x] 9.4 RED: same alert-worthy state, `now - since >= 10` → emits `"degraded"` exactly once (9.9s emits nothing, 10.0s emits exactly one)
+- [x] 9.5 RED: already-alerted state, 100 further ticks → emits `"none"` every time (one-shot, D-14)
+- [x] 9.6 RED: different alert-worthy state (e.g. `refresh_failed` → `expired_needs_relogin`) resets `degraded_since`, clears `alerted_state`, re-arms, fires again after 10s
+- [x] 9.7 RED: `valid` after a prior alert → emits `"recovery"` exactly once, re-arms
+- [x] 9.8 RED: `valid`/`rate_limited`/`not_configured` without a prior alert → emits `"none"`, no recovery notice
+- [x] 9.9 RED: `rate_limited`/`not_configured` sustained for any duration never alert (Excluded States scenario)
+- [x] 9.10 GREEN: implement `ALERT_WORTHY_STATES`, `SESSION_ALERT_SUSTAIN_SECONDS = 10.0`, `AlertDecision`, `SessionAlerter.observe()` in `kubernetes/model-panel/app/alerts/state.py`, using injected `time.monotonic()` `now`
 
 ## Phase 10: model-panel — alert payload content (D-20)
 
-- [ ] 10.1 RED: a debounced alert for `expired_needs_relogin` includes `state`, sanitized `reason`, `expires_at` (or explicit absence marker), and a one-line next-action hint
-- [ ] 10.2 GREEN: fixed `dict[state] -> str` `next_action` map; assemble flat JSON payload (`event`, `state`, `previous_state`, `reason`, `expires_at`, `next_action`, `sustained_seconds`, `source`)
+- [x] 10.1 RED: a debounced alert for `expired_needs_relogin` includes `state`, sanitized `reason`, `expires_at` (or explicit absence marker), and a one-line next-action hint
+- [x] 10.2 GREEN: fixed `dict[state] -> str` `next_action` map; assemble flat JSON payload (`event`, `state`, `previous_state`, `reason`, `expires_at`, `next_action`, `sustained_seconds`, `source`)
 
 ## Phase 11: model-panel — `alerts/ticker.py` delivery (D-09/D-10/D-16/D-17/D-19)
 

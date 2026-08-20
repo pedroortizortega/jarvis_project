@@ -1,0 +1,43 @@
+# knowledge-vault-search — selector-less Service + manually-managed
+# EndpointSlice pointing at the host's cni0 gateway address (design.md D-06).
+# NOT YET APPLIED — same posture as the rest of kubernetes/mcps. Reachable
+# only from pods on this node; 10.42.0.1 is flannel-specific (design.md Open
+# Questions) and never resolves from the LAN.
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-vault-search
+  namespace: mcps
+  labels:
+    app: knowledge-vault-search
+    mcp: knowledge-vault-search
+spec:
+  # No selector: there is no pod backing this service, only the host's
+  # search bridge reached over the cni0 gateway. Endpoints are supplied
+  # explicitly by the EndpointSlice below, not derived from a pod label.
+  clusterIP: None
+  ports:
+    - port: 8088
+      targetPort: 8088
+      name: http
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: knowledge-vault-search
+  namespace: mcps
+  labels:
+    kubernetes.io/service-name: knowledge-vault-search
+    app: knowledge-vault-search
+addressType: IPv4
+ports:
+  - name: http
+    port: 8088
+    protocol: TCP
+endpoints:
+  # trantor's cni0 gateway — reachable only from pods scheduled on this node
+  # (design.md F-6/D-06). A CNI change would move this single address.
+  - addresses:
+      - "10.42.0.1"
+    conditions:
+      ready: true

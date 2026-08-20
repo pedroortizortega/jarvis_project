@@ -21,8 +21,10 @@ from memory_router.app import (
 from memory_router.contracts import (
     BackendUnavailableError,
     Capabilities,
+    Conclusion,
     Health,
     HealthStatus,
+    ReflectResult,
     SearchHit,
     SearchResult,
     StoreResult,
@@ -79,6 +81,34 @@ class FakeBackend:
             for text in texts
         )
         return SearchResult(hits=hits)
+
+
+class FakeReflectiveBackend:
+    def __init__(self, *, name="honcho", namespaces=("/user/master",), status="ready", fail=False):
+        self._name = name
+        self._namespaces = namespaces
+        self._status = status
+        self._fail = fail
+        self.reflect_calls = []
+
+    def capabilities(self) -> Capabilities:
+        return Capabilities(
+            name=self._name, verbs=frozenset({"reflect"}), namespaces=self._namespaces
+        )
+
+    def health(self) -> Health:
+        return Health(status=HealthStatus.DOWN if self._fail else HealthStatus.OK)
+
+    def reflect(self, req):
+        self.reflect_calls.append(req)
+        if self._fail:
+            raise BackendUnavailableError(self._name, "simulated crash")
+        if self._status == "pending":
+            return ReflectResult(status="pending", backend=self._name)
+        conclusion = Conclusion(
+            namespace=req.namespace, backend=self._name, content="derived belief"
+        )
+        return ReflectResult(status="ready", backend=self._name, conclusions=(conclusion,))
 
 
 def make_dispatcher(backend, *, journal_dir):
@@ -203,33 +233,126 @@ class DispatcherSearchTests(unittest.TestCase):
         self.assertEqual(403, ctx.exception.status)
 
 
+class ExplodingJournal:
+    def append(self, entry):
+        raise AssertionError("reflect must never touch the journal")
+
+
+def make_reflect_dispatcher(backends, *, journal_dir):
+    registry = Registry(backends=list(backends))
+    journal = Journal(Path(journal_dir) / "journal.ndjson")
+    return Dispatcher(
+        registry=registry,
+        journal=journal,
+        cn_to_identity=CN_TO_IDENTITY,
+        bearer_by_identity=BEARER_BY_IDENTITY,
+    )
+
+
 class DispatcherReflectTests(unittest.TestCase):
-    def test_reflect_returns_501_and_never_calls_registry_or_journal(self):
-        class ExplodingRegistry:
-            def backends_for(self, **kwargs):
-                raise AssertionError("reflect must never dispatch to a backend")
+    def test_authorized_role_gets_routed_reflect_result_never_501(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend()
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/user/master", query="preferences?",
+            )
+        self.assertEqual("ready", result["status"])
+        self.assertEqual(1, len(result["conclusions"]))
+        self.assertEqual("derived belief", result["conclusions"][0]["content"])
+        self.assertEqual([], result["unavailable"])
+        self.assertEqual(1, len(backend.reflect_calls))
 
-        class ExplodingJournal:
-            def append(self, entry):
-                raise AssertionError("reflect must never touch the journal")
+    def test_unauthorized_role_gets_403_not_501(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend()
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            with self.assertRaises(DispatchError) as ctx:
+                dispatcher.reflect(
+                    cn="codex", bearer="token-codex", role="coder",
+                    namespace="/user/master", query="x",
+                )
+        self.assertEqual(403, ctx.exception.status)
+        self.assertEqual("authorization_denied", ctx.exception.error)
+        self.assertEqual(0, len(backend.reflect_calls))
 
-        dispatcher = Dispatcher(
-            registry=ExplodingRegistry(),
-            journal=ExplodingJournal(),
-            cn_to_identity=CN_TO_IDENTITY,
-            bearer_by_identity=BEARER_BY_IDENTITY,
-        )
-        with self.assertRaises(DispatchError) as ctx:
-            dispatcher.reflect(cn="codex", bearer="token-codex", role="coder", namespace="/global")
-        self.assertEqual(501, ctx.exception.status)
-        self.assertEqual("not_implemented", ctx.exception.error)
+    def test_no_reflect_capable_backend_returns_explicit_no_backend_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # Only a store/search backend is registered — no ReflectiveBackend.
+            store_backend = FakeBackend()
+            dispatcher = make_reflect_dispatcher([store_backend], journal_dir=directory)
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/user/master", query="x",
+            )
+        self.assertEqual("no_backend", result["status"])
+        self.assertEqual([], result["conclusions"])
+        self.assertEqual([], result["unavailable"])
+
+    def test_all_backends_down_returns_degraded_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend(fail=True)
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/user/master", query="x",
+            )
+        self.assertEqual("degraded", result["status"])
+        self.assertEqual([], result["conclusions"])
+        self.assertEqual(1, len(result["unavailable"]))
+        self.assertEqual("honcho", result["unavailable"][0]["backend"])
+
+    def test_pending_backend_returns_pending_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend(status="pending")
+            dispatcher = make_reflect_dispatcher([backend], journal_dir=directory)
+            result = dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/user/master", query="x",
+            )
+        self.assertEqual("pending", result["status"])
+        self.assertEqual([], result["conclusions"])
+
+    def test_reflect_never_touches_journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = FakeReflectiveBackend()
+            registry = Registry(backends=[backend])
+            dispatcher = Dispatcher(
+                registry=registry,
+                journal=ExplodingJournal(),
+                cn_to_identity=CN_TO_IDENTITY,
+                bearer_by_identity=BEARER_BY_IDENTITY,
+            )
+            dispatcher.reflect(
+                cn="hermes-gateway", bearer="token-hg", role="jarvis",
+                namespace="/user/master", query="x",
+            )
+
+
+class AppSourceHygieneTests(unittest.TestCase):
+    def test_no_stale_hindsight_reflect_references_remain(self):
+        app_source = Path(
+            Path(__file__).resolve().parent.parent
+            / "hermes-native" / "memory-router" / "src" / "memory_router" / "app.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("lands with Hindsight", app_source)
+        self.assertNotIn('"phase": "hindsight"', app_source)
 
 
 class RestAndMcpParityTests(unittest.TestCase):
     def setUp(self):
         self._directory = tempfile.TemporaryDirectory()
         self.backend = FakeBackend(hits=["hit-a"])
-        self.dispatcher = make_dispatcher(self.backend, journal_dir=self._directory.name)
+        self.reflective_backend = FakeReflectiveBackend()
+        registry = Registry(backends=[self.backend, self.reflective_backend])
+        journal = Journal(Path(self._directory.name) / "journal.ndjson")
+        self.dispatcher = Dispatcher(
+            registry=registry,
+            journal=journal,
+            cn_to_identity=CN_TO_IDENTITY,
+            bearer_by_identity=BEARER_BY_IDENTITY,
+        )
         self.server = build_http_server(self.dispatcher, host="127.0.0.1", port=0)
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -266,10 +389,17 @@ class RestAndMcpParityTests(unittest.TestCase):
         self.assertEqual(202, status)
         self.assertEqual("committed", payload["status"])
 
-    def test_rest_reflect_returns_501_no_backend_call(self):
-        status, payload = self._post("/memory/reflect", {"role": "coder"})
-        self.assertEqual(501, status)
-        self.assertEqual("not_implemented", payload["error"])
+    def test_rest_reflect_writes_a_routed_response_body_never_501(self):
+        status, payload = self._post(
+            "/memory/reflect",
+            {"role": "jarvis", "namespace": "/user/master", "query": "preferences?"},
+            cn="hermes-gateway",
+            bearer="token-hg",
+        )
+        self.assertNotEqual(501, status)
+        self.assertEqual(200, status)
+        self.assertEqual("ready", payload["status"])
+        self.assertEqual(1, len(payload["conclusions"]))
         self.assertEqual(0, len(self.backend.store_calls))
         self.assertEqual(0, len(self.backend.search_calls))
 
@@ -290,11 +420,29 @@ class RestAndMcpParityTests(unittest.TestCase):
         self.assertEqual(rest_payload["status"], mcp_result["body"]["status"])
         self.assertEqual(rest_payload["backend"], mcp_result["body"]["backend"])
 
-    def test_mcp_reflect_also_returns_501(self):
-        client = RestClient(f"http://127.0.0.1:{self.port}", cn="codex", bearer="token-codex")
-        result = handle_mcp_tool_call("memory_reflect", {"role": "coder"}, client=client)
-        self.assertEqual(501, result["status"])
-        self.assertEqual("not_implemented", result["body"]["error"])
+    def test_mcp_and_rest_produce_equivalent_reflect_result(self):
+        rest_status, rest_payload = self._post(
+            "/memory/reflect",
+            {"role": "jarvis", "namespace": "/user/master", "query": "same?"},
+            cn="hermes-gateway",
+            bearer="token-hg",
+        )
+
+        client = RestClient(
+            f"http://127.0.0.1:{self.port}", cn="hermes-gateway", bearer="token-hg"
+        )
+        mcp_result = handle_mcp_tool_call(
+            "memory_reflect",
+            {"role": "jarvis", "namespace": "/user/master", "query": "same?"},
+            client=client,
+        )
+
+        self.assertEqual(rest_status, mcp_result["status"])
+        self.assertNotEqual(501, mcp_result["status"])
+        self.assertEqual(rest_payload["status"], mcp_result["body"]["status"])
+        self.assertEqual(
+            len(rest_payload["conclusions"]), len(mcp_result["body"]["conclusions"])
+        )
 
     def test_healthz_requires_no_auth_for_kubernetes_probes(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.port)

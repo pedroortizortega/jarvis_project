@@ -44,32 +44,32 @@ Chain strategy: pending
 
 ## Phase 3: Dispatcher Reflect Pipeline (`app.py`)
 
-- [ ] 3.1 RED: in `tests/test_memory_router_app.py`, replace `test_reflect_returns_501_and_never_calls_registry_or_journal` with `DispatcherReflectTests` asserting: authorized role -> real registry dispatch (via injected `Registry(backends=[...])`) returns a routed `ReflectResult` payload, never `501`; unauthorized role -> `403 authorization_denied`; no reflect-capable backend registered -> `200 {"status": "no_backend", "conclusions": [], "unavailable": []}`; all backends raise `BackendUnavailableError` -> `status: "degraded"`, `unavailable` populated.
-- [ ] 3.2 RED: replace `test_rest_reflect_returns_501_no_backend_call` with a REST assertion that `POST /memory/reflect` actually writes a response body (today it calls `dispatcher.reflect` and returns nothing) and is never `501`.
-- [ ] 3.3 RED: replace `test_mcp_reflect_also_returns_501` with an MCP/REST parity assertion for `memory_reflect` matching `memory_search`'s existing parity pattern.
-- [ ] 3.4 RED: add an assertion (string search over `app.py` source) that neither `"lands with Hindsight"` nor `"phase": "hindsight"` occurs anywhere in the file.
-- [ ] 3.5 GREEN: in `app.py`, add `_parse_reflect_body(body)` helper (role/namespace/query — fixes the `**body` `TypeError` bug) mirroring `_parse_search_body`.
-- [ ] 3.6 GREEN: rewrite `Dispatcher.reflect()` mirroring `context()` — single namespace via `_validate_namespace`, `_authorize(verb="reflect")`, `registry.backends_for(verb="reflect", namespace=namespace)`, no `_fallback_chain`; iterate results per design.md Data Flow (`ready`/`pending`/`BackendUnavailableError`/no-backend), return `{"namespace", "status", "conclusions", "unavailable"}`.
-- [ ] 3.7 GREEN: fix `do_POST`'s `/memory/reflect` branch to call `dispatcher.reflect(cn=cn, bearer=bearer, **_parse_reflect_body(body))` and `self._respond(200, result)` (today it never responds).
-- [ ] 3.8 GREEN: fix `RestClient.reflect` to normalize via `_parse_reflect_body` like `store`/`search` instead of passing raw `**kwargs`.
-- [ ] 3.9 GREEN: delete the `"lands with Hindsight"` docstring/comment and the `if error.error == "not_implemented": payload["phase"] = "hindsight"` branch in `_dispatch_error_payload`.
-- [ ] 3.10 GREEN: run Phase 3 tests, confirm green.
-- [ ] 3.11 REFACTOR: confirm `reflect()` reads symmetrically with `context()`; no leftover `501`/`not_implemented` reflect-specific code paths.
+- [x] 3.1 RED: in `tests/test_memory_router_app.py`, replace `test_reflect_returns_501_and_never_calls_registry_or_journal` with `DispatcherReflectTests` asserting: authorized role -> real registry dispatch (via injected `Registry(backends=[...])`) returns a routed `ReflectResult` payload, never `501`; unauthorized role -> `403 authorization_denied`; no reflect-capable backend registered -> `200 {"status": "no_backend", "conclusions": [], "unavailable": []}`; all backends raise `BackendUnavailableError` -> `status: "degraded"`, `unavailable` populated.
+- [x] 3.2 RED: replace `test_rest_reflect_returns_501_no_backend_call` with a REST assertion that `POST /memory/reflect` actually writes a response body (today it calls `dispatcher.reflect` and returns nothing) and is never `501`.
+- [x] 3.3 RED: replace `test_mcp_reflect_also_returns_501` with an MCP/REST parity assertion for `memory_reflect` matching `memory_search`'s existing parity pattern.
+- [x] 3.4 RED: add an assertion (string search over `app.py` source) that neither `"lands with Hindsight"` nor `"phase": "hindsight"` occurs anywhere in the file.
+- [x] 3.5 GREEN: in `app.py`, add `_parse_reflect_body(body)` helper (role/namespace/query — fixes the `**body` `TypeError` bug) mirroring `_parse_search_body`.
+- [x] 3.6 GREEN: rewrite `Dispatcher.reflect()` mirroring `context()` — single namespace via `_validate_namespace`, `_authorize(verb="reflect")`, `registry.backends_for(verb="reflect", namespace=namespace)`, no `_fallback_chain`; iterate results per design.md Data Flow (`ready`/`pending`/`BackendUnavailableError`/no-backend), return `{"namespace", "status", "conclusions", "unavailable"}`.
+- [x] 3.7 GREEN: fix `do_POST`'s `/memory/reflect` branch to call `dispatcher.reflect(cn=cn, bearer=bearer, **_parse_reflect_body(body))` and `self._respond(200, result)` (today it never responds).
+- [x] 3.8 GREEN: fix `RestClient.reflect` to normalize via `_parse_reflect_body` like `store`/`search` instead of passing raw `**kwargs`.
+- [x] 3.9 GREEN: delete the `"lands with Hindsight"` docstring/comment and the `if error.error == "not_implemented": payload["phase"] = "hindsight"` branch in `_dispatch_error_payload`.
+- [x] 3.10 GREEN: run Phase 3 tests, confirm green.
+- [x] 3.11 REFACTOR: confirm `reflect()` reads symmetrically with `context()`; no leftover `501`/`not_implemented` reflect-specific code paths.
 
 ## Phase 4: Permissions
 
-- [ ] 4.1 RED: in `tests/test_memory_router_permissions.py`, add table-driven tests: `jarvis` and `scientist` allow `reflect` on `user_master`; `coder` denies `reflect` on `user_master`; all three roles deny `reflect` on `global`/`projects`/`agents_self`/`agents_other`.
-- [ ] 4.2 GREEN: in `hermes-native/memory-router/src/memory_router/permissions.py`, add `reflect` to `_ROLE_TABLE["jarvis"]["user_master"]` and `_ROLE_TABLE["scientist"]["user_master"]`; leave `_ROLE_TABLE["coder"]["user_master"]` as `frozenset()`.
-- [ ] 4.3 GREEN: run Phase 4 tests, confirm green.
+- [x] 4.1 RED: in `tests/test_memory_router_permissions.py`, add table-driven tests: `jarvis` and `scientist` allow `reflect` on `user_master`; `coder` denies `reflect` on `user_master`; all three roles deny `reflect` on `global`/`projects`/`agents_self`/`agents_other`.
+- [x] 4.2 GREEN: in `hermes-native/memory-router/src/memory_router/permissions.py`, add `reflect` to `_ROLE_TABLE["jarvis"]["user_master"]` and `_ROLE_TABLE["scientist"]["user_master"]`; leave `_ROLE_TABLE["coder"]["user_master"]` as `frozenset()`.
+- [x] 4.3 GREEN: run Phase 4 tests, confirm green.
 
 ## Phase 5: Registration and Cross-Cutting Verification
 
 - [x] 5.1 In `hermes-native/memory-router/pyproject.toml`, add `honcho = "memory_router.backends.honcho:HonchoBackend"` under `[project.entry-points."memory_router.backends"]`.
-- [ ] 5.2 Run full suite: `python -m unittest discover -s tests` from the repo root — confirm all green, including Phase 1-4 additions.
-- [ ] 5.3 Confirm `isinstance(EngramBackend(...), MemoryBackend)` and `isinstance(HindsightBackend(...), MemoryBackend)` conformance tests are byte-unmodified from pre-change and still pass.
-- [ ] 5.4 Grep `app.py` for `"lands with Hindsight"` and `"phase": "hindsight"` — confirm zero occurrences.
-- [ ] 5.5 Confirm `registry.py` is byte-unmodified (`git diff` shows no changes to `registry.py`).
+- [x] 5.2 Run full suite: `python -m unittest discover -s tests` from the repo root — confirm all green, including Phase 1-4 additions.
+- [x] 5.3 Confirm `isinstance(EngramBackend(...), MemoryBackend)` and `isinstance(HindsightBackend(...), MemoryBackend)` conformance tests are byte-unmodified from pre-change and still pass.
+- [x] 5.4 Grep `app.py` for `"lands with Hindsight"` and `"phase": "hindsight"` — confirm zero occurrences.
+- [x] 5.5 Confirm `registry.py` is byte-unmodified (`git diff` shows no changes to `registry.py`).
 
 ## Phase 6: Spec Companion Doc
 
-- [ ] 6.1 Create `specs/016_honcho_backend.md` following `specs/015_hindsight_backend.md`'s structure/format (sections 0-10: why, scope, architecture, contract-separation rationale, adapter contract, degraded semantics, threat matrix, coexistence/rollback, open questions, implementation checklist, references). Reference `openspec/changes/honcho-backend/{proposal,design}.md` and the delta specs.
+- [x] 6.1 Create `specs/016_honcho_backend.md` following `specs/015_hindsight_backend.md`'s structure/format (sections 0-10: why, scope, architecture, contract-separation rationale, adapter contract, degraded semantics, threat matrix, coexistence/rollback, open questions, implementation checklist, references). Reference `openspec/changes/honcho-backend/{proposal,design}.md` and the delta specs.

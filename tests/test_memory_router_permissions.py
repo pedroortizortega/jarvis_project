@@ -147,5 +147,57 @@ class PermissionsTests(unittest.TestCase):
         self.assertEqual({"jarvis"}, IDENTITY_ROLES["hermes-gateway"])
 
 
+class ReflectPermissionsTests(unittest.TestCase):
+    def test_jarvis_allowed_reflect_on_user_master(self):
+        authorize(
+            role="jarvis",
+            identity_name="hermes-gateway",
+            namespace="/user/master",
+            verb="reflect",
+        )
+
+    def test_scientist_allowed_reflect_on_user_master(self):
+        authorize(
+            role="scientist",
+            identity_name="opencode",
+            namespace="/user/master",
+            verb="reflect",
+        )
+
+    def test_coder_denied_reflect_on_user_master(self):
+        with self.assertRaises(AuthorizationError):
+            authorize(
+                role="coder",
+                identity_name="codex",
+                namespace="/user/master",
+                verb="reflect",
+            )
+
+    def test_reflect_denied_on_every_other_namespace_kind_for_all_roles(self):
+        cases = [
+            ("jarvis", "hermes-gateway", "/global"),
+            ("jarvis", "hermes-gateway", "/projects/lector-ine"),
+            ("jarvis", "hermes-gateway", "/agents/hermes-gateway"),
+            ("jarvis", "hermes-gateway", "/agents/codex"),
+            ("scientist", "opencode", "/global"),
+            ("scientist", "opencode", "/projects/lector-ine"),
+            ("scientist", "opencode", "/agents/opencode"),
+            ("scientist", "opencode", "/agents/codex"),
+            ("coder", "codex", "/global"),
+            ("coder", "codex", "/projects/lector-ine"),
+            ("coder", "codex", "/agents/codex"),
+            ("coder", "codex", "/agents/hermes-gateway"),
+        ]
+        for role, identity_name, namespace in cases:
+            with self.subTest(role=role, namespace=namespace):
+                with self.assertRaises(AuthorizationError):
+                    authorize(
+                        role=role,
+                        identity_name=identity_name,
+                        namespace=namespace,
+                        verb="reflect",
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

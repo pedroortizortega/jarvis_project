@@ -75,3 +75,41 @@ class MemoryBackend(Protocol):
     def store(self, req: StoreRequest) -> StoreResult: ...
 
     def search(self, req: SearchRequest) -> SearchResult: ...
+
+
+@dataclass(frozen=True)
+class ReflectRequest:
+    namespace: str
+    role: str
+    query: str = ""
+
+
+@dataclass(frozen=True)
+class Conclusion:
+    namespace: str
+    backend: str
+    content: str
+    confidence: float = 0.0
+
+
+@dataclass(frozen=True)
+class ReflectResult:
+    status: str  # "ready" | "pending" | "empty"
+    backend: str
+    conclusions: tuple = ()  # tuple[Conclusion]
+    reason: str = ""
+
+
+@runtime_checkable
+class ReflectiveBackend(Protocol):
+    """Separate, narrow contract for backends that support the `reflect`
+    verb. Deliberately NOT part of `MemoryBackend` (see design.md
+    "Architecture Decisions") — registry verb selection is the dispatch
+    gate, so `MemoryBackend` conformance for Engram and Hindsight stays
+    untouched and neither is required to implement `reflect()`."""
+
+    def capabilities(self) -> Capabilities: ...
+
+    def health(self) -> Health: ...
+
+    def reflect(self, req: ReflectRequest) -> ReflectResult: ...

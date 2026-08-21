@@ -58,6 +58,13 @@ spec:
                 secretKeyRef:
                   name: model-panel-auth
                   key: bearer
+            - name: HERMES_WEBHOOK_URL
+              value: http://hermes.llms.svc.cluster.local:8000/webhooks/model-panel-session-alerts
+            - name: MODEL_PANEL_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: model-panel-webhook
+                  key: secret
           ports:
             - name: http
               containerPort: 8080

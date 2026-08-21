@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from app.codex_auth import AuthError
 from app.proxy import build_router
 from app.session import SessionManager
-from app.store import SecretNotFound, TokenStore
+from app.store import SecretNotFound, StoreUnreachable, TokenStore
 
 logger = logging.getLogger("codex_shim")
 
@@ -48,6 +48,8 @@ def create_app(
         except SecretNotFound:
             pass
         except AuthError:
+            pass  # state/reason already classified by the session manager
+        except StoreUnreachable:
             pass  # state/reason already classified by the session manager
         status = manager.status()
         # Explicitly never include token material — status() already only

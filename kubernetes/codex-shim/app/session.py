@@ -20,7 +20,7 @@ from app.codex_auth import (
     AuthError,
     refresh_codex_oauth_pure,
 )
-from app.store import SecretNotFound, TokenRecord, TokenStore
+from app.store import SecretNotFound, StoreUnreachable, TokenRecord, TokenStore
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ SessionState = Literal[
     "rate_limited",
     "expired_needs_relogin",
     "refresh_failed",
+    "backend_unreachable",
 ]
 
 
@@ -92,6 +93,14 @@ class SessionManager:
                 self._state = "not_configured"
                 self._reason = "codex-shim-auth Secret not found"
                 raise
+            except StoreUnreachable as exc:
+                # D-07: only a live read reaches this branch; a still-valid
+                # `_cached` record short-circuits above and never surfaces a
+                # transient API-server outage on the hot path.
+                self._state = "backend_unreachable"
+                self._last_error_code = exc.code
+                self._reason = exc.reason
+                raise
         return self._cached
 
     def status(self) -> dict:
@@ -122,7 +131,7 @@ class SessionManager:
         """Assumes ``self._lock`` is held by the caller."""
         try:
             record = self._load_cached()
-        except SecretNotFound:
+        except (SecretNotFound, StoreUnreachable):
             raise
         self._refresh_call_count += 1
         try:
@@ -133,7 +142,16 @@ class SessionManager:
             self._classify_error(exc)
             self._last_failed_attempt_at = self._clock()
             raise
-        new_record = self._store.write(tokens)
+        try:
+            new_record = self._store.write(tokens)
+        except StoreUnreachable as exc:
+            # A refresh that cannot persist is a backend failure, not an
+            # AuthError — the new tokens are lost, not invalid.
+            self._state = "backend_unreachable"
+            self._last_error_code = exc.code
+            self._reason = exc.reason
+            self._last_failed_attempt_at = self._clock()
+            raise
         self._cached = new_record
         self._state = "valid"
         self._last_error_code = None

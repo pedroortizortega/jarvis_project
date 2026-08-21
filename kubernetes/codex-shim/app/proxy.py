@@ -27,7 +27,7 @@ from app.codex_translate import (
     build_responses_request,
 )
 from app.session import SessionManager
-from app.store import SecretNotFound
+from app.store import SecretNotFound, StoreUnreachable
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,8 @@ def _session_error_body(exc: Exception) -> tuple[int, Dict[str, Any]]:
     indication of whether re-login is needed or it's a transient failure."""
     if isinstance(exc, SecretNotFound):
         return 503, {"error": {"message": "not_configured", "type": "session_error", "state": "not_configured"}}
+    if isinstance(exc, StoreUnreachable):
+        return 503, {"error": {"message": exc.reason, "type": "session_error", "state": "backend_unreachable"}}
     if isinstance(exc, AuthError):
         if exc.code == CODEX_RATE_LIMITED_CODE:
             return 429, {"error": {"message": str(exc), "type": "session_error", "state": "rate_limited"}}
@@ -159,7 +161,7 @@ def build_router(session_manager: SessionManager, *, http_client: httpx.AsyncCli
 
         try:
             access_token = await session_manager.ensure_fresh()
-        except (AuthError, SecretNotFound) as exc:
+        except (AuthError, SecretNotFound, StoreUnreachable) as exc:
             status_code, err_body = _session_error_body(exc)
             return JSONResponse(status_code=status_code, content=err_body)
         client = get_client()
@@ -290,7 +292,7 @@ def build_router(session_manager: SessionManager, *, http_client: httpx.AsyncCli
         if not stream:
             try:
                 access_token = await session_manager.ensure_fresh()
-            except (AuthError, SecretNotFound) as exc:
+            except (AuthError, SecretNotFound, StoreUnreachable) as exc:
                 status_code, body = _session_error_body(exc)
                 return JSONResponse(status_code=status_code, content=body)
             client = get_client()
@@ -384,7 +386,7 @@ def build_router(session_manager: SessionManager, *, http_client: httpx.AsyncCli
         # Streaming path: request SSE from upstream, translate event-by-event.
         try:
             access_token = await session_manager.ensure_fresh()
-        except (AuthError, SecretNotFound) as exc:
+        except (AuthError, SecretNotFound, StoreUnreachable) as exc:
             status_code, body = _session_error_body(exc)
             return JSONResponse(status_code=status_code, content=body)
         client = get_client()

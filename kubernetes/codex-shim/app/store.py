@@ -64,6 +64,34 @@ class SecretNotFound(RuntimeError):
     """Raised when the codex-shim-auth Secret does not exist (not_configured)."""
 
 
+class StoreUnreachable(RuntimeError):
+    """Kubernetes API call for the Secret failed for a non-404 reason.
+
+    Classified by exception *type/position*, never by reading the raw
+    exception text (2.6/D-04): the ``code`` is derived only from
+    ``getattr(exc, "status", None)`` and the ``reason`` is templated from
+    that code, so leakage of a response body or traceback into the reason
+    is structurally impossible.
+    """
+
+    def __init__(self, code: str, reason: str) -> None:
+        super().__init__(reason)
+        self.code = code  # "k8s_api_<status>" | "k8s_transport"
+        self.reason = reason  # templated; never derived from str(exc)
+
+
+def _classify_store_exception(exc: Exception, *, operation: str) -> StoreUnreachable:
+    """Build a `StoreUnreachable` for any non-404 failure of the live
+    Kubernetes API call (D-02): covers `ApiException` (non-404 status),
+    `MaxRetryError`, `socket.timeout`, `OSError`, and any future client
+    exception, without importing or `isinstance`-checking any of them.
+    """
+    status = getattr(exc, "status", None)
+    code = f"k8s_api_{status}" if isinstance(status, int) else "k8s_transport"
+    reason = f"kubernetes API secret {operation} failed ({code})"
+    return StoreUnreachable(code, reason)
+
+
 class TokenStore:
     """Reads/patches the `codex-shim-auth` Secret via the K8s API client.
 
@@ -96,7 +124,7 @@ class TokenStore:
                 raise SecretNotFound(
                     f"Secret {SECRET_NAMESPACE}/{SECRET_NAME} not found"
                 ) from exc
-            raise
+            raise _classify_store_exception(exc, operation="read") from exc
 
         data = self._decode_data(getattr(secret, "data", None) or {})
         access_token = data.get(_KEY_ACCESS_TOKEN, "")
@@ -160,7 +188,10 @@ class TokenStore:
             body_data[_KEY_EXPIRES_AT] = str(expires_at)
 
         patch_body = {"data": self._encode_data(body_data)}
-        core_v1.patch_namespaced_secret(SECRET_NAME, SECRET_NAMESPACE, patch_body)
+        try:
+            core_v1.patch_namespaced_secret(SECRET_NAME, SECRET_NAMESPACE, patch_body)
+        except Exception as exc:
+            raise _classify_store_exception(exc, operation="write") from exc
 
         return TokenRecord(
             access_token=access_token,

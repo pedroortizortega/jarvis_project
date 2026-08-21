@@ -1,5 +1,6 @@
-"""Session-degradation alerting: pure signing + transition state machine
-(Unit 2a), plus the daemon-thread ticker and lifespan wiring (Unit 2b).
+"""Session-degradation alerting: pure HMAC signing and the transition/debounce
+state machine (Unit 2a). The daemon-thread ticker and FastAPI lifespan wiring
+(Unit 2b) land in a later change and are not part of this module yet.
 """
 
 from __future__ import annotations

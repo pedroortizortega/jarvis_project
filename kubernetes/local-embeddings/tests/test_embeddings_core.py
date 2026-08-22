@@ -99,13 +99,15 @@ class EncodingFormatTests(unittest.TestCase):
 
 class DimensionsTests(unittest.TestCase):
     def test_1536_rejected(self):
+        # 1536 is OpenAI's default embedding dimension — the exact wrong
+        # value a consumer coded against OpenAI would naively send.
         with self.assertRaises(EmbeddingError) as ctx:
             validate_request({"input": "hola", "dimensions": 1536})
         self.assertEqual(ctx.exception.code, "dimension_mismatch")
         self.assertEqual(ctx.exception.param, "dimensions")
 
-    def test_384_proceeds(self):
-        req = validate_request({"input": "hola", "dimensions": 384})
+    def test_1024_proceeds(self):
+        req = validate_request({"input": "hola", "dimensions": 1024})
         self.assertEqual(req.texts, ["hola"])
 
     def test_absent_dimensions_proceeds(self):
@@ -138,7 +140,7 @@ class ModelNameEchoTests(unittest.TestCase):
 
         self.assertEqual(resp["model"], "text-embedding-3-small")
         # Inference always targets the pinned model id, never the client string.
-        self.assertEqual(MODEL_ID, "intfloat/multilingual-e5-small")
+        self.assertEqual(MODEL_ID, "intfloat/multilingual-e5-large")
 
 
 class InputTypePrefixTests(unittest.TestCase):

@@ -1,5 +1,16 @@
 # Design: Local Embeddings Service
 
+**Correction (2026-08-22, post-merge):** every mention below of
+`intfloat/multilingual-e5-small` / 384 dims / the D-14 `500m`/`768Mi`
+requests + `2`/`1536Mi` limits + `OMP_NUM_THREADS=2` sizing is
+**superseded** — `multilingual-e5-small` isn't a real `fastembed` model
+(only discovered by actually building the image, which no unit test
+exercises). The shipped model is `intfloat/multilingual-e5-large`
+(1024 dims, ~2.24GB), with `deployment.yaml` resized to `1`/`3Gi`
+requests, `3`/`6Gi` limits, `OMP_NUM_THREADS=3`. This file is kept as
+the historical record of the original decision process; the corrected
+values live in the actual manifests, code, and `specs/021_local_embeddings_service.md`.
+
 ## Technical Approach
 
 A fourth `kubernetes/` service directory that is byte-for-byte conventional with `codex-shim`/`model-panel` where it can be (`python:3.12-slim`, uid 10001, uvicorn on 8080, `create_app()` + `@asynccontextmanager lifespan`, `HOME=/tmp` + emptyDir, `/healthz` probes, ClusterIP, `kustomization.yaml` listing `rbac.yaml, deployment.yaml, service.yaml`) and deliberately divergent only where CPU inference forces it (resources, startup probe, zero-RBAC SA, baked model layer).

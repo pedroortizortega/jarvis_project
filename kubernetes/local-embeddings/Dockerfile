@@ -11,7 +11,9 @@ COPY app ./app
 # running pod never needs network access to fetch it. Written as root,
 # owned by root (mode 0755 by default) — readable by the runtime uid
 # 10001 below, writable by nobody. Lives outside /app so a later
-# `COPY app ./app` layer rebuild does not invalidate this ~500MB layer.
+# `COPY app ./app` layer rebuild does not invalidate this ~2.24GB layer
+# (multilingual-e5-large; corrected 2026-08-22, was wrongly ~500MB when
+# the pin was still the nonexistent -small variant).
 ENV HF_HUB_OFFLINE=0 \
     TRANSFORMERS_OFFLINE=0
 RUN python -c "\

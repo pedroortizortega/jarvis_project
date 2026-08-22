@@ -81,13 +81,18 @@ spec:
           # D-13: cold-loading ~2.2GB of ONNX on a CPU node takes tens of
           # seconds; without a startupProbe the tight liveness settings
           # below would CrashLoop the pod before it ever became ready.
+          # failureThreshold bumped 30->60 (150s->300s budget) alongside
+          # the 2026-08-22 model-size correction (e5-small ~500MB ->
+          # e5-large ~2.24GB, ~4.7x) — verified loading in a few seconds
+          # on this cluster's 32-core node, but a slower/contended node
+          # deserves the extra margin rather than trusting one fast run.
           startupProbe:
             httpGet:
               path: /healthz
               port: http
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 30
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /healthz

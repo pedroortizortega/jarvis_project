@@ -17,13 +17,19 @@ from ..contracts import (
     StoreResult,
 )
 
-# Single revisable wire-format surface (design.md "Interfaces"). Unverified
-# against a live Hindsight instance or authoritative docs — see design.md
-# Open Questions.
+# Single revisable wire-format surface (design.md "Interfaces"). Verified
+# 2026-08-22 against ghcr.io/vectorize-io/hindsight's real API reference
+# and confirmed live against a real `hindsight-api` container. The old
+# paths/payload shape were a plausible-looking guess, not the real API —
+# real Hindsight is a batch-oriented, tenant-scoped API ("default" tenant
+# segment, "memories" not "retain"/"recall" as path segments, PUT not
+# POST for bank creation, items wrapped in a list even for a single
+# memory). ENDPOINTS["health"] was the only entry that was already
+# correct.
 ENDPOINTS = {
-    "retain": "/v1/banks/{bank_id}/retain",
-    "recall": "/v1/banks/{bank_id}/recall",
-    "create": "/v1/banks",
+    "retain": "/v1/default/banks/{bank_id}/memories",
+    "recall": "/v1/default/banks/{bank_id}/memories/recall",
+    "create": "/v1/default/banks/{bank_id}",
     "health": "/health",
 }
 
@@ -148,7 +154,12 @@ class HindsightBackend:
             raise BackendUnavailableError("hindsight", f"malformed response: {exc}") from exc
 
     def _create_bank(self, client: _HttpJsonClient, bank_id: str) -> None:
-        status, raw = client.request("POST", ENDPOINTS["create"], {"bank_id": bank_id})
+        # PUT /v1/default/banks/{bank_id}, not POST /v1/banks with bank_id
+        # in the body — the real endpoint is "create or update", scoped by
+        # the URL path, and takes agent-config fields (mission/disposition/
+        # ...), not a bank_id field (verified live, see ENDPOINTS comment).
+        path = ENDPOINTS["create"].format(bank_id=bank_id)
+        status, raw = client.request("PUT", path, {"mission": f"memory-router bank for {bank_id}"})
         if status < 200 or status >= 300:
             reason = self._decode_error_reason(raw)
             raise BackendUnavailableError(
@@ -193,7 +204,9 @@ class HindsightBackend:
         client = self._client()
         bank_id = self._bank_id(req.namespace)
         path = ENDPOINTS["retain"].format(bank_id=bank_id)
-        payload = {"content": req.content, "metadata": req.metadata}
+        # Real retain is batch-shaped — a single memory is a one-item list,
+        # never a bare {"content": ...} body (verified live).
+        payload = {"items": [{"content": req.content, "metadata": req.metadata}]}
 
         status, raw = client.request("POST", path, payload)
         if status == 404:
@@ -207,6 +220,11 @@ class HindsightBackend:
             )
 
         result = self._decode(raw)
+        # Real synchronous retain never returns a per-item id — only
+        # {"success", "bank_id", "items_count", "async", "usage"}
+        # (verified live). `id` stays "" here; StoreResult.id is `str`,
+        # not Optional[str], so an empty string is the honest value, not
+        # a bug to paper over with a fabricated id.
         return StoreResult(
             status="committed", backend="hindsight", id=str(result.get("id", ""))
         )
@@ -229,8 +247,11 @@ class HindsightBackend:
             SearchHit(
                 namespace=req.namespace,
                 backend="hindsight",
-                content=item.get("content", ""),
-                score=float(item.get("score", 0.0)),
+                # Real recall response: `results[].text`, not `.content`;
+                # `results[].scores.final`, not a top-level `.score`
+                # (verified live).
+                content=item.get("text", ""),
+                score=float((item.get("scores") or {}).get("final", 0.0)),
             )
             for item in result.get("results", [])
         )

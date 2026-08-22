@@ -178,12 +178,12 @@ class HindsightAdapterStoreSearchTests(unittest.TestCase):
         self.assertEqual("mem-1", result.id)
         method, url, _headers, body = transport.calls[0]
         self.assertEqual("POST", method)
-        self.assertIn("/v1/banks/projects-lector-ine/retain", url)
-        self.assertEqual("hi", json.loads(body)["content"])
+        self.assertIn("/v1/default/banks/projects-lector-ine/memories", url)
+        self.assertEqual("hi", json.loads(body)["items"][0]["content"])
 
     def test_search_returns_hits_from_results(self):
         transport = StubTransport(
-            [(200, {"results": [{"content": "found", "score": 0.9}]})]
+            [(200, {"results": [{"text": "found", "scores": {"final": 0.9}}]})]
         )
         backend = HindsightBackend(transport=transport, base_url="http://x")
 
@@ -197,14 +197,14 @@ class HindsightAdapterStoreSearchTests(unittest.TestCase):
         self.assertEqual("/projects/lector-ine", result.hits[0].namespace)
         method, url, _headers, body = transport.calls[0]
         self.assertEqual("POST", method)
-        self.assertIn("/v1/banks/projects-lector-ine/recall", url)
+        self.assertIn("/v1/default/banks/projects-lector-ine/memories/recall", url)
         self.assertEqual("deploy", json.loads(body)["query"])
 
     def test_store_lazy_creates_bank_on_404_then_retries_once(self):
         transport = StubTransport(
             [
                 (404, {"error": "bank not found"}),
-                (200, {"id": "created"}),
+                (200, {"bank_id": "projects-lector-ine"}),
                 (200, {"id": "mem-2"}),
             ]
         )
@@ -219,9 +219,9 @@ class HindsightAdapterStoreSearchTests(unittest.TestCase):
         methods_and_urls = [(m, u) for m, u, _h, _b in transport.calls]
         self.assertEqual(
             [
-                ("POST", "http://x/v1/banks/projects-lector-ine/retain"),
-                ("POST", "http://x/v1/banks"),
-                ("POST", "http://x/v1/banks/projects-lector-ine/retain"),
+                ("POST", "http://x/v1/default/banks/projects-lector-ine/memories"),
+                ("PUT", "http://x/v1/default/banks/projects-lector-ine"),
+                ("POST", "http://x/v1/default/banks/projects-lector-ine/memories"),
             ],
             methods_and_urls,
         )

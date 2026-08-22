@@ -1,6 +1,5 @@
 # memory-router — Phase 1 deployment manifest (SDD change: memory-router)
-# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
-# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+# Namespace-ownership blocker resolved, see specs/014_memory_router.md §8.
 #
 # Mirrors the mTLS pattern documented for the existing `mcps` tenant
 # (specs/011_engram_cloud_centralized.md §2: TLSOption `mcps-engram-mtls`,

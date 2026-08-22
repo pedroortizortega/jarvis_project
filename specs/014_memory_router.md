@@ -1,7 +1,7 @@
 # JARVIS Spec 012 - Software Design Document (SDD)
 ## Memory Router: capa unificada de acceso a memoria (Fase 1 — Engram)
 
-**Estado:** Fase 1 implementada (código + tests unitarios) — despliegue a clúster **bloqueado** hasta resolver el prerequisito de propiedad de los manifiestos de Engram Cloud
+**Estado:** Fase 1 desplegada en vivo a `mcps` y con los 4 clientes onboardeados (2026-08-21). Pod `Running`, `/healthz` verificado en 200 vía port-forward y vía Ingress con mTLS real para `pedro-claude-code`/`codex`/`opencode`/`hermes-gateway` (handshake completo, certificado propio, rechazo confirmado sin cert de cliente).
 **Fecha:** 2026-08-19
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -210,15 +210,26 @@ Engram, Brave y Graphify quedan intactos. Sin migración de datos.
 
 ---
 
-## 8. Bloqueante de despliegue (no resuelto)
+## 8. Bloqueante de despliegue (resuelto)
 
 Los manifiestos de `kubernetes/mcps/memory-router-*.yaml` (Fase 7 de este
-change) están **autorados pero no aplicados a ningún clúster**. Igual que
-documenta spec 011 §0, el namespace `mcps` existente tiene manifiestos no
-versionados de origen no documentado — desplegar un tercer tenant
-dependiente de ese namespace sin resolver antes esa propiedad/origen no es
-seguro. No asumir resuelto; confirmar owner y fuente reproducible de esos
-manifiestos antes de cualquier `kubectl apply` real.
+change) están **autorados pero aún no aplicados a ningún clúster**. Spec
+011 §0 había dejado como pregunta abierta el origen del namespace `mcps`
+preexistente (~32h más viejo que el propio spec de Engram Cloud, sin
+manifiestos versionados en ningún repo).
+
+**Resolución (2026-08-20):** Pedro confirma que `mcps` fue creado vía
+OpenCode como namespace hub para desplegar servicios tipo MCP accesibles
+desde el resto de las PCs de su red local. No se encontró evidencia
+independiente en el repo (ningún spec, manifiesto o script documenta esa
+creación) ni en el clúster (los eventos del namespace ya expiraron por
+retención). Verificado por inspección directa (`kubectl -n mcps get all,
+ingress,pvc,configmap,secret`) que el namespace hoy solo contiene lo que
+spec 011 desplegó (`engram-cloud`, `engram-postgres` y sus recursos
+asociados) — no hay recursos huérfanos de origen desconocido conviviendo
+ahí. Con la propiedad confirmada por el owner del proyecto y sin señales
+en contra, el prerequisito de spec 011 §0 queda resuelto: `kubectl apply`
+de los manifiestos de memory-router sobre `mcps` es seguro.
 
 Preguntas abiertas adicionales (heredadas de `design.md`):
 - ¿El router usa una única identidad Engram compartida o un proxy por
@@ -228,6 +239,22 @@ Preguntas abiertas adicionales (heredadas de `design.md`):
   horas.
 - Nombre real del header de Traefik con el CN del cliente (placeholder
   actual: `X-Forwarded-Client-Cert-Cn`, ver `app.py`).
+
+**Hallazgo del despliegue real (2026-08-21):** un `entryPoint` de Traefik
+dedicado (`memoryrouter`, `:8444`) **no alcanza** para aislar el mTLS de
+memory-router del de Engram. Traefik resuelve el certificado de servidor
+por SNI (hostname) contra un store global compartido por toda la
+instancia, no por entrypoint — confirmado con handshake TLS real: al
+compartir `Host(\`trantor.tail07dff9.ts.net\`)` con `engram-tailnet`, el
+puerto dedicado servía igual el certificado de Engram y nunca pedía
+certificado de cliente (`RequireAndVerifyClientCert` no se aplicaba).
+Solución real: hostname propio (`memory-router.trantor.tail07dff9.ts.net`)
+con su propio certificado de servidor — recién ahí Traefik indexa un
+slot de SNI distinto y aplica la política mTLS correcta. Verificado con
+control negativo: sin cert de cliente, `tlsv13 alert certificate
+required`. Cualquier otro servicio futuro que necesite mTLS aislado en
+este mismo Traefik va a necesitar el mismo patrón (hostname propio, no
+solo puerto propio).
 
 ---
 
@@ -242,9 +269,9 @@ Preguntas abiertas adicionales (heredadas de `design.md`):
 - [x] Adaptador Engram (`backends/engram.py`) — `argv`/`env` fijos, degradación explícita, con test
 - [x] App: dispatcher + REST + shim MCP + `/memory/reflect` = 501 (`app.py`), con test, incluida paridad MCP/REST
 - [x] `pyproject.toml`: grupo de entry points `memory_router.backends` + console scripts
-- [x] Manifiestos `kubernetes/mcps/memory-router-*.yaml` (6 archivos) — **autorados, no aplicados** (§8)
-- [ ] Despliegue real a clúster — bloqueado (§8)
-- [ ] Onboarding real de los 4 clientes sobre el router (pendiente de despliegue)
+- [x] Manifiestos `kubernetes/mcps/memory-router-*.yaml` (6 archivos) — aplicados a `mcps` (2026-08-21)
+- [x] Despliegue real a clúster — pod `Running`, `/healthz` 200 vía port-forward y vía Ingress con mTLS real, control negativo confirmado (§8)
+- [x] Onboarding real de los 4 clientes sobre el router — `pedro-claude-code`, `codex`, `opencode`, `hermes-gateway` probados end-to-end (cert + bearer), los 4 responden `/healthz` 200 vía Ingress con mTLS
 - [ ] Adaptadores de backend #2–6 (Hindsight, Graphiti, Honcho, Cognee, Obsidian) — fuera de alcance de esta fase
 
 ---

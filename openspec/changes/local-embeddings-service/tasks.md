@@ -51,16 +51,16 @@ Chain strategy: sequential-against-main
 
 ## Phase 3: HTTP Layer (`main.py`) — PR 2
 
-- [ ] 3.1 RED: create `kubernetes/local-embeddings/tests/test_api.py` (pytest only, `TestClient`) — round-trip `POST /v1/embeddings` via `create_app(embedder=fake)`; 4xx bodies use the OpenAI `{"error": {...}}` envelope, never FastAPI's default `detail` shape (D-12).
-- [ ] 3.2 RED: add malformed-JSON case asserting the same OpenAI envelope via the `RequestValidationError` handler.
-- [ ] 3.3 RED: add `/healthz` cases — 503 before `app.state.embedder` is set, 200 once loaded (D-01/D-13).
-- [ ] 3.4 RED: add `GET /v1/models` case asserting the pinned model id is returned without touching the embedder.
-- [ ] 3.5 RED: add `Authorization: Bearer sk-dummy` case — request succeeds identically to no header (accept-and-ignore).
-- [ ] 3.6 RED: add concurrency case — two concurrent requests both succeed and are serialized through `asyncio.Semaphore(1)` (D-05), asserting no more than one in-flight call to the fake embedder at a time.
-- [ ] 3.7 GREEN: create `kubernetes/local-embeddings/app/main.py` — `create_app(embedder=None)`, `@asynccontextmanager` lifespan calling `model.load_embedder()` when no embedder is injected, 3 routes, `run_in_threadpool` + semaphore around inference, `RequestValidationError`/`EmbeddingError` handlers rendering the OpenAI envelope.
-- [ ] 3.8 GREEN: create `kubernetes/local-embeddings/pytest.ini` (`testpaths = tests`, `asyncio_mode = auto`), matching `codex-shim`/`model-panel` (per spec 021 section 5 decision — this directory does not use `unittest discover`).
-- [ ] 3.9 GREEN: run Phase 3 tests, confirm green.
-- [ ] 3.10 REFACTOR: confirm `main.py` holds only wiring — no validation/response-assembly logic duplicated from `embeddings.py`.
+- [x] 3.1 RED: create `kubernetes/local-embeddings/tests/test_api.py` (pytest only, `TestClient`) — round-trip `POST /v1/embeddings` via `create_app(embedder=fake)`; 4xx bodies use the OpenAI `{"error": {...}}` envelope, never FastAPI's default `detail` shape (D-12).
+- [x] 3.2 RED: add malformed-JSON case asserting the same OpenAI envelope via the `RequestValidationError` handler.
+- [x] 3.3 RED: add `/healthz` cases — 503 before `app.state.embedder` is set, 200 once loaded (D-01/D-13).
+- [x] 3.4 RED: add `GET /v1/models` case asserting the pinned model id is returned without touching the embedder.
+- [x] 3.5 RED: add `Authorization: Bearer sk-dummy` case — request succeeds identically to no header (accept-and-ignore).
+- [x] 3.6 RED: add concurrency case — two concurrent requests both succeed and are serialized through `asyncio.Semaphore(1)` (D-05), asserting no more than one in-flight call to the fake embedder at a time.
+- [x] 3.7 GREEN: create `kubernetes/local-embeddings/app/main.py` — `create_app(embedder=None)`, `@asynccontextmanager` lifespan calling `model.load_embedder()` when no embedder is injected, 3 routes, `run_in_threadpool` + semaphore around inference, `RequestValidationError`/`EmbeddingError` handlers rendering the OpenAI envelope.
+- [x] 3.8 GREEN: create `kubernetes/local-embeddings/pytest.ini` (`testpaths = tests`, `asyncio_mode = auto`), matching `codex-shim`/`model-panel` (per spec 021 section 5 decision — this directory does not use `unittest discover`).
+- [x] 3.9 GREEN: run Phase 3 tests, confirm green.
+- [x] 3.10 REFACTOR: confirm `main.py` holds only wiring — no validation/response-assembly logic duplicated from `embeddings.py`.
 
 ## Phase 4: Manifests — PR 3
 

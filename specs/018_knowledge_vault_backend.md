@@ -1,7 +1,7 @@
 # JARVIS Spec 018 - Software Design Document (SDD)
 ## Memory Router: puente de búsqueda knowledge-vault en `/global`
 
-**Estado:** Implementado (código + tests unitarios en ambos lados) — bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
+**Estado:** Validado contra una instancia real de `serve.py`, de punta a punta (2026-08-22) — **cero bugs encontrados**, el único de los 5 backends de memory-router donde el wire format ya estaba correcto (§8.1; ambos lados — adaptador y server — son código propio de este repo, no de un proyecto de terceros a adivinar). Corrección de una afirmación anterior en esta sesión: `serve.py` **nunca se desplegó** en `trantor` — los 5 systemd units activos (`knowledge-vault-{approve,mirror,publisher,review,review-sync}`) son de publicación/revisión del vault, no el bridge de búsqueda HTTP. Bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8 resuelto (ver spec 014 §8); desplegar `serve.py` como servicio real (systemd o el `Service`/`EndpointSlice` de spec 014) sigue fuera de alcance de esta validación
 **Fecha:** 2026-08-20
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -300,9 +300,45 @@ datos, sin estado almacenado, sin escrituras que deshacer.
   tests -v`) verde — 113 tests
 - [x] Suite completa de memory-router (`python -m unittest discover -s
   tests`) verde
-- [ ] Validación contra el servicio real en `trantor` — fuera de
-  alcance, follow-up explícito
-- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
+- [x] Validación contra una instancia real de `serve.py` (2026-08-22) —
+  ver §8.1
+- [ ] Despliegue real de `serve.py` como servicio persistente — sigue
+  sin ejecutarse; esta validación corrió el proceso a mano, en primer
+  plano, contra el vault real en disco
+
+---
+
+### 8.1 Validación contra una instancia real (2026-08-22)
+
+Corrida `serve.py` de verdad (no mockeado) contra el vault real en
+`/opt/knowledge-vault/vault` en `trantor` — el único de los 5 backends de
+memory-router donde **ambos lados del wire format son código de este
+mismo repo**, escritos en el mismo change SDD, no una API de terceros a
+adivinar. Detalle real encontrado al leer el código (no un bug, un
+requisito de operación): sin `$CREDENTIALS_DIRECTORY` (systemd
+`LoadCredential=`), `_read_token()` devuelve `""` y `_authenticated()`
+falla cerrado siempre (`if not token: return False`) — corriendo
+`serve.py` fuera de systemd para esta prueba, hubo que simular el
+credential a mano (`CREDENTIALS_DIRECTORY` apuntando a un directorio con
+`search-token`).
+
+Circuito completo probado con el propio `KnowledgeVaultBackend` del
+repo: `health()` → OK; `search()` sobre una query real (`"storage
+class"`) devolvió el hit real y correcto de la nota real en disco, con
+`note`/`title`/`excerpt`/`score` exactamente como el adaptador los
+espera. Control negativo: request sin bearer → `401` real. **Cero bugs
+de wire format encontrados** — a diferencia de los otros 4 backends
+(Graphiti, Honcho, Hindsight, Cognee), donde diseñar ambos lados del
+mismo lado del cable evitó el problema estructural que causó todos los
+bugs anteriores (adivinar la API real de un proyecto de terceros sin
+verificarla).
+
+Corrección de una afirmación hecha antes en esta sesión: se dijo que
+knowledge-vault "ya corre en producción" — falso. Los 5 systemd units
+activos en `trantor`
+(`knowledge-vault-{approve,mirror,publisher,review,review-sync}`)
+publican/revisan el vault; ninguno es el bridge de búsqueda HTTP. Sigue
+sin desplegarse.
 
 ---
 

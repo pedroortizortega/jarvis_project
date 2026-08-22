@@ -227,7 +227,9 @@ class FailIfCalledTransport:
 
 class CogneeAdapterReflectTests(unittest.TestCase):
     def test_2xx_with_answer_returns_ready_with_one_unscored_conclusion(self):
-        transport = StubTransport([(200, {"result": "synthesized graph answer"})])
+        transport = StubTransport(
+            [(200, [{"search_result": "synthesized graph answer", "dataset_id": None, "dataset_name": None}])]
+        )
         backend = CogneeBackend(transport=transport, base_url="http://x")
 
         result = backend.reflect(
@@ -246,14 +248,16 @@ class CogneeAdapterReflectTests(unittest.TestCase):
 
         method, url, _headers, body = transport.calls[0]
         self.assertEqual("POST", method)
-        self.assertIn("/recall", url)
+        self.assertIn("/api/v1/search", url)
         payload = json.loads(body)
         self.assertEqual("status?", payload["query"])
-        self.assertEqual("GRAPH_COMPLETION", payload["search_type"])
+        self.assertEqual("GRAPH_COMPLETION", payload["searchType"])
         self.assertEqual(["jarvis-hermes"], payload["datasets"])
 
     def test_2xx_empty_answer_returns_empty_not_pending_not_ready(self):
-        transport = StubTransport([(200, {"result": ""})])
+        transport = StubTransport(
+            [(200, [{"search_result": "", "dataset_id": None, "dataset_name": None}])]
+        )
         backend = CogneeBackend(transport=transport, base_url="http://x")
 
         result = backend.reflect(
@@ -266,7 +270,7 @@ class CogneeAdapterReflectTests(unittest.TestCase):
         self.assertEqual((), result.conclusions)
 
     def test_2xx_absent_answer_returns_empty(self):
-        transport = StubTransport([(200, {})])
+        transport = StubTransport([(200, [])])
         backend = CogneeBackend(transport=transport, base_url="http://x")
 
         result = backend.reflect(
@@ -277,7 +281,9 @@ class CogneeAdapterReflectTests(unittest.TestCase):
         self.assertEqual((), result.conclusions)
 
     def test_2xx_whitespace_only_answer_returns_empty(self):
-        transport = StubTransport([(200, {"result": "   \n\t  "})])
+        transport = StubTransport(
+            [(200, [{"search_result": "   \n\t  ", "dataset_id": None, "dataset_name": None}])]
+        )
         backend = CogneeBackend(transport=transport, base_url="http://x")
 
         result = backend.reflect(
@@ -397,7 +403,7 @@ class CogneeAdapterSecretHandlingTests(unittest.TestCase):
             self.assertNotIn("/projects/Foo", exc.reason)
 
     def test_bearer_header_present_when_auth_mode_bearer(self):
-        transport = StubTransport([(200, {"result": "x"})])
+        transport = StubTransport([(200, [{"search_result": "x", "dataset_id": None, "dataset_name": None}])])
         backend = CogneeBackend(
             transport=transport, base_url="http://x", auth_mode="bearer", token="secret-tok"
         )
@@ -406,7 +412,7 @@ class CogneeAdapterSecretHandlingTests(unittest.TestCase):
         self.assertEqual("Bearer secret-tok", headers.get("Authorization"))
 
     def test_authorization_header_absent_when_auth_mode_none(self):
-        transport = StubTransport([(200, {"result": "x"})])
+        transport = StubTransport([(200, [{"search_result": "x", "dataset_id": None, "dataset_name": None}])])
         backend = CogneeBackend(
             transport=transport, base_url="http://x", auth_mode="none", token=""
         )
@@ -417,7 +423,7 @@ class CogneeAdapterSecretHandlingTests(unittest.TestCase):
 
 class CogneeAdapterOutboundConstructionTests(unittest.TestCase):
     def test_hostile_query_appears_only_in_json_body_never_url_or_headers(self):
-        transport = StubTransport([(200, {"result": "x"})])
+        transport = StubTransport([(200, [{"search_result": "x", "dataset_id": None, "dataset_name": None}])])
         backend = CogneeBackend(transport=transport, base_url="http://x")
         hostile_query = "?&<script>ctrl\x00chars</script>"
         backend.reflect(

@@ -15,12 +15,19 @@ from ..contracts import (
     ReflectResult,
 )
 
-# Single revisable wire-format surface (design.md "Interfaces"). Unverified
-# against a live Cognee instance or authoritative /recall docs — see
-# design.md Open Questions.
+# Single revisable wire-format surface (design.md "Interfaces"). Verified
+# 2026-08-22 against topoteretes/cognee's live openapi.json and confirmed
+# the request shape against a real running instance (auth-gated 401/403
+# and NoDataError responses proved the route + request body were
+# accepted; full cognify->search round trip was blocked by an unrelated
+# infra gap — see specs/017 §9.1). Every assumption below was wrong:
+# path, request field casing, and response shape.
 ENDPOINTS = {
-    "recall": "/recall",     # POST {query, search_type, datasets:[id]} -> {result|answer: str}
-    "health": "/healthz",
+    # POST {searchType, datasets:[name], query} -> array of
+    # {search_result, dataset_id, dataset_name} (SearchResult[], not a
+    # single object with a "result"/"answer" key).
+    "recall": "/api/v1/search",
+    "health": "/health",
 }
 SEARCH_TYPE = "GRAPH_COMPLETION"   # graph-synthesized answer, not CHUNKS retrieval
 
@@ -186,7 +193,7 @@ class CogneeBackend:
         client = self._client()
         payload = {
             "query": req.query,
-            "search_type": SEARCH_TYPE,
+            "searchType": SEARCH_TYPE,  # camelCase — verified against live openapi.json
             "datasets": [dataset],
         }
 
@@ -197,9 +204,25 @@ class CogneeBackend:
                 f"recall query failed with status {status}: {self._decode_error_reason(raw)}",
             )
 
-        result = self._decode(raw)
-        content = result.get("result") or result.get("answer")
-        if not content or not str(content).strip():
+        # Real response is a top-level JSON array of
+        # {search_result, dataset_id, dataset_name} — not a single object
+        # with a "result"/"answer" key (verified against live
+        # openapi.json). One dataset queried -> typically one entry, but
+        # never assume exactly one; join every non-empty search_result.
+        try:
+            results = json.loads(raw) if raw else []
+        except json.JSONDecodeError as exc:
+            raise BackendUnavailableError("cognee", f"malformed response: {exc}") from exc
+        if not isinstance(results, list):
+            results = [results]
+
+        pieces = [
+            str(item.get("search_result")).strip()
+            for item in results
+            if isinstance(item, dict) and item.get("search_result")
+        ]
+        content = "\n\n".join(piece for piece in pieces if piece)
+        if not content:
             return ReflectResult(status="empty", backend="cognee")
 
         conclusion = Conclusion(

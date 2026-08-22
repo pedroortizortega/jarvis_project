@@ -1,7 +1,7 @@
 # JARVIS Spec 019 - Software Design Document (SDD)
 ## Memory Router: adaptador Graphiti para `reflect` en `/global` y `/agents/*`
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Graphiti; sin desplegar (hereda el bloqueante de despliegue de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8)
+**Estado:** Validado contra una instancia real de Graphiti (2026-08-21) — encontró y corrigió 2 bugs reales en `ENDPOINTS` (§9.1); bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8 resuelto (ver spec 014 §8), despliegue real de memory-router en `mcps` completo (spec 014 §9) — infraestructura dedicada de Graphiti (Neo4j/FalkorDB en el clúster) sigue fuera de alcance de esta fase
 **Fecha:** 2026-08-20
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -401,11 +401,42 @@ adaptador nunca escribe).
 - [x] Cierre de matriz: cada raíz fija tiene ≥1 backend reflect-capaz bajo
   el registro completo, con test
 - [x] Suite completa (`python -m unittest discover -s tests`) verde
-- [ ] Validación contra instancia real de Graphiti — fuera de alcance,
-  follow-up explícito
-- [ ] Despliegue real — bloqueado (heredado de spec 012 §8 / spec 015 §8 /
-  spec 016 §8 / spec 017 §8)
+- [x] Validación contra instancia real de Graphiti (2026-08-21) — ver §9.1
+- [x] Despliegue real — memory-router está desplegado y verificado en `mcps` (spec 014 §8-9); infra dedicada de Graphiti (Neo4j/FalkorDB en el clúster) sigue fuera de alcance de esta fase
 - [ ] Path de ingestión de Graphiti (`add_episode`) — diferido
+
+---
+
+### 9.1 Validación contra una instancia real (2026-08-21)
+
+Levantado `zepai/graphiti` (server FastAPI oficial) + Neo4j 5.26 community
+en containers Docker efímeros, contra una API key real de OpenAI (LLM +
+embeddings — `codex-shim` no cubre `/v1/embeddings`, solo
+`/v1/chat/completions`, así que no alcanzó para este caso). Encontrados y
+corregidos **2 bugs reales** en `ENDPOINTS`, confirmados contra el código
+fuente de `getzep/graphiti` (`server/graph_service/routers/retrieve.py`,
+`server/graph_service/main.py`) y contra el server real corriendo:
+
+| | Antes (bug) | Real |
+|---|---|---|
+| Búsqueda | `POST /search/facts` | `POST /search` |
+| Health | `GET /healthz` | `GET /healthcheck` |
+
+El formato del payload (`query`/`group_ids`/`max_facts` → `{facts: [...]}`)
+ya estaba bien — solo las rutas estaban mal. Circuito completo probado con
+el propio `GraphitiBackend` del repo (no curl crudo): `health()` → `OK`
+contra el server real; ingesta de un episodio real
+(`POST /messages`) con extracción de entidades por LLM real; `reflect()`
+devolvió las 3 conclusiones extraídas (`Pedro prefers dark mode.` /
+`Pedro uses editor.` / `Pedro uses terminal.`) correctamente mapeadas a
+`namespace=/agents/alpha`, `backend=graphiti`. Suite completa (318 tests)
+verde después del fix. Containers de prueba destruidos al terminar; ninguna
+credencial quedó en disco.
+
+Sigue pendiente, fuera de alcance de esta validación: desplegar Neo4j/
+FalkorDB + el server de Graphiti como infraestructura real y persistente
+del clúster (esto solo probó el adaptador contra una instancia efímera
+local).
 
 ---
 

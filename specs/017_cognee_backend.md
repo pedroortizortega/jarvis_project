@@ -1,7 +1,7 @@
 # JARVIS Spec 017 - Software Design Document (SDD)
 ## Memory Router: adaptador Cognee para `reflect` en `/projects/*`
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Cognee; sin desplegar (hereda el bloqueante de despliegue de spec 012 §8 / spec 015 §8 / spec 016 §8)
+**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Cognee; bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
 **Fecha:** 2026-08-20
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -371,8 +371,7 @@ datos, sin estado almacenado, sin limpieza del lado Cognee.
 - [x] Suite completa (`python -m unittest discover -s tests`) verde
 - [ ] Validación contra instancia real de Cognee — fuera de alcance,
   follow-up explícito
-- [ ] Despliegue real — bloqueado (heredado de spec 012 §8 / spec 015 §8 /
-  spec 016 §8)
+- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
 - [ ] Path de ingestión de Cognee (`/remember`, add+cognify) — diferido
 
 ---

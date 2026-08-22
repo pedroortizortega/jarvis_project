@@ -207,7 +207,7 @@ class HonchoAdapterReflectTests(unittest.TestCase):
         self.assertEqual("honcho", result.conclusions[0].backend)
         method, url, _headers, body = transport.calls[0]
         self.assertEqual("POST", method)
-        self.assertIn("/v2/workspaces/jarvis/peers/master/chat", url)
+        self.assertIn("/v3/workspaces/jarvis/peers/master/chat", url)
         self.assertEqual("preferences?", json.loads(body)["query"])
 
     def test_202_status_returns_pending_never_fabricated(self):

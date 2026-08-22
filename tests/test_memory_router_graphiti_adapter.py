@@ -269,7 +269,7 @@ class GraphitiAdapterReflectTests(unittest.TestCase):
 
         method, url, _headers, body = transport.calls[0]
         self.assertEqual("POST", method)
-        self.assertIn("/search/facts", url)
+        self.assertTrue(url.endswith("/search"), url)
         payload = json.loads(body)
         self.assertEqual("preferences?", payload["query"])
         self.assertEqual(["jarvis-agent-alpha"], payload["group_ids"])
@@ -410,13 +410,13 @@ class GraphitiAdapterDegradationTests(unittest.TestCase):
         health = backend.health()
         self.assertEqual(HealthStatus.DOWN, health.status)
 
-    def test_health_uses_get_healthz(self):
+    def test_health_uses_get_healthcheck(self):
         transport = StubTransport([(200, {})])
         backend = GraphitiBackend(transport=transport, base_url="http://x")
         backend.health()
         method, url, _headers, _body = transport.calls[0]
         self.assertEqual("GET", method)
-        self.assertIn("/healthz", url)
+        self.assertTrue(url.endswith("/healthcheck"), url)
 
 
 class GraphitiAdapterSecretHandlingTests(unittest.TestCase):

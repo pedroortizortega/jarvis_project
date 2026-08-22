@@ -1,7 +1,7 @@
 # JARVIS Spec 018 - Software Design Document (SDD)
 ## Memory Router: puente de búsqueda knowledge-vault en `/global`
 
-**Estado:** Implementado (código + tests unitarios en ambos lados) — sin desplegar (hereda el bloqueante de despliegue de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8)
+**Estado:** Implementado (código + tests unitarios en ambos lados) — bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 / spec 017 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
 **Fecha:** 2026-08-20
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -302,8 +302,7 @@ datos, sin estado almacenado, sin escrituras que deshacer.
   tests`) verde
 - [ ] Validación contra el servicio real en `trantor` — fuera de
   alcance, follow-up explícito
-- [ ] Despliegue real — bloqueado (heredado de spec 012 §8 / spec 015 §8
-  / spec 016 §8 / spec 017 §8)
+- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
 
 ---
 

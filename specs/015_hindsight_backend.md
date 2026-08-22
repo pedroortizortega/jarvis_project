@@ -1,7 +1,7 @@
 # JARVIS Spec 015 - Software Design Document (SDD)
 ## Memory Router: segundo adaptador de backend (Hindsight)
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Hindsight; sin desplegar (hereda el bloqueante de despliegue de spec 012 §8)
+**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Hindsight; bloqueante de despliegue heredado de spec 012 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
 **Fecha:** 2026-08-19
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -212,9 +212,11 @@ Fase 1. Sin migración de datos — el router sigue sin desplegar.
 
 ## 8. Preguntas abiertas / bloqueantes heredados
 
-- **Bloqueante de despliegue (heredado de spec 012 §8):** sin resolver.
-  Este change no despliega nada; el adaptador solo se prueba contra un
-  transporte HTTP stubbed.
+- **Bloqueante de despliegue (heredado de spec 012 §8):** resuelto — ver
+  spec 014 §8 (propiedad del namespace `mcps` confirmada por el owner del
+  proyecto: creado vía OpenCode como hub de servicios MCP para la red
+  local). Este change sigue sin desplegar nada; el adaptador solo se
+  probó contra un transporte HTTP stubbed.
 - Las rutas y payloads exactos de `ENDPOINTS` están **sin verificar**
   contra una instancia real de Hindsight o documentación autoritativa —
   `ENDPOINTS` es la única superficie revisable si cambian.
@@ -247,7 +249,7 @@ Fase 1. Sin migración de datos — el router sigue sin desplegar.
 - [x] Verificación manual: `Registry().all_backends()` devuelve ambos adaptadores tras reinstalar el paquete
 - [x] `git diff` confirma cero cambios en router core
 - [ ] Validación contra instancia real de Hindsight — fuera de alcance, follow-up explícito
-- [ ] Despliegue real — bloqueado (heredado de spec 012 §8)
+- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
 
 ---
 

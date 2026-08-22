@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 import re
@@ -14,12 +15,18 @@ from ..contracts import (
     ReflectResult,
 )
 
-# Single revisable wire-format surface (design.md "Interfaces"). Unverified
-# against a live Honcho instance or authoritative Dialectic docs — see
-# design.md Open Questions.
+# Single revisable wire-format surface (design.md "Interfaces"). Verified
+# 2026-08-21 against plastic-labs/honcho's server source (src/main.py's
+# router prefix, src/routers/peers.py's chat route, src/schemas/api.py's
+# DialecticOptions/DialecticResponse) and confirmed live against a real
+# `honcho` server. `query` matched what this adapter already sent; the
+# prefix and health path were wrong. Also confirmed: `DialecticResponse`
+# has no `confidence` field at all — `result.get("confidence", 0.0)` below
+# always silently defaults, Honcho never sends it, not a bug but worth
+# knowing.
 ENDPOINTS = {
-    "dialectic": "/v2/workspaces/{workspace_id}/peers/{peer_id}/chat",
-    "health": "/healthz",
+    "dialectic": "/v3/workspaces/{workspace_id}/peers/{peer_id}/chat",
+    "health": "/health",
 }
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
@@ -33,10 +40,19 @@ def _env_default(explicit, env_key: str, fallback: str) -> str:
     return os.environ.get(env_key, fallback)
 
 
-def _default_transport(method: str, url: str, headers: dict, body: bytes | None):
+def _default_transport(
+    method: str, url: str, headers: dict, body: bytes | None, *, timeout: int = 10
+):
+    # `timeout` is keyword-only with a default so the 4-positional-arg
+    # `transport(method, url, headers, body)` seam stays exactly what tests
+    # stub — only the real default transport needs the configured timeout,
+    # bound via functools.partial where it's constructed below. Previously
+    # this hardcoded 10 regardless of the configured `timeout`/`*_TIMEOUT_SECONDS`
+    # env var, silently ignoring it (found validating against a live
+    # backend that legitimately took longer than 10s to respond).
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
@@ -49,7 +65,7 @@ class _HttpJsonClient:
     real."""
 
     def __init__(self, *, transport=None, base_url: str, timeout: int, headers: dict | None = None):
-        self._transport = transport or _default_transport
+        self._transport = transport or functools.partial(_default_transport, timeout=timeout)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._headers = dict(headers or {})

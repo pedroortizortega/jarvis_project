@@ -56,23 +56,29 @@ spec:
             # otherwise ORT spawns one thread per host core and gets
             # CFS-throttled into worse latency than single-threaded.
             - name: OMP_NUM_THREADS
-              value: "2"
+              value: "3"
             - name: ORT_INTRA_OP_NUM_THREADS
-              value: "2"
+              value: "3"
           ports:
             - name: http
               containerPort: 8080
           resources:
-            # D-14: sized for a resident ~470MB fp32 ONNX model plus
-            # interpreter/tokenizer and ORT arena headroom on a 256-item
-            # batch — diverges deliberately from the sibling proxy sizing.
+            # D-14 (revised 2026-08-22): the pinned model is
+            # intfloat/multilingual-e5-large (~2.24GB fp32 ONNX,
+            # ~560M params — multilingual-e5-small does not exist in
+            # fastembed, only discovered by actually building the
+            # image). Sized for that resident model plus
+            # interpreter/tokenizer/ORT arena headroom on a 256-item
+            # batch. Node has 32 cores / 64GB with 13% utilization at
+            # the time of sizing — comfortable headroom either way;
+            # revisit under real load.
             requests:
-              cpu: "500m"
-              memory: 768Mi
+              cpu: "1"
+              memory: 3Gi
             limits:
-              cpu: "2"
-              memory: 1536Mi
-          # D-13: cold-loading ~500MB of ONNX on a CPU node takes tens of
+              cpu: "3"
+              memory: 6Gi
+          # D-13: cold-loading ~2.2GB of ONNX on a CPU node takes tens of
           # seconds; without a startupProbe the tight liveness settings
           # below would CrashLoop the pod before it ever became ready.
           startupProbe:

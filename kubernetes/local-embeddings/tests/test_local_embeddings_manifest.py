@@ -72,20 +72,21 @@ class SecurityContextTests(unittest.TestCase):
 
 
 class ResourceSizingTests(unittest.TestCase):
-    """D-14: requests 500m/768Mi, limits 2/1536Mi, OMP_NUM_THREADS=2."""
+    """D-14 (revised 2026-08-22 for multilingual-e5-large): requests
+    1/3Gi, limits 3/6Gi, OMP_NUM_THREADS=3."""
 
     def test_requests_match_d14(self):
         requests = _container()["resources"]["requests"]
-        self.assertEqual(requests["cpu"], "500m")
-        self.assertEqual(requests["memory"], "768Mi")
+        self.assertEqual(requests["cpu"], "1")
+        self.assertEqual(requests["memory"], "3Gi")
 
     def test_limits_match_d14(self):
         limits = _container()["resources"]["limits"]
-        self.assertEqual(limits["cpu"], "2")
-        self.assertEqual(limits["memory"], "1536Mi")
+        self.assertEqual(limits["cpu"], "3")
+        self.assertEqual(limits["memory"], "6Gi")
 
     def test_omp_num_threads_env(self):
-        self.assertEqual(_env_map(_container()).get("OMP_NUM_THREADS"), "2")
+        self.assertEqual(_env_map(_container()).get("OMP_NUM_THREADS"), "3")
 
 
 class OfflineCacheEnvTests(unittest.TestCase):

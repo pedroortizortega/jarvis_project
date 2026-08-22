@@ -4,6 +4,8 @@
 
 Define the OpenAI-compatible `/v1/embeddings` contract for the cluster-internal, CPU-only, zero-egress `local-embeddings` service in namespace `llms`: pinned model/dimension guarantee, request/response shape, batching limits, error semantics, and network/runtime invariants.
 
+**Corrected 2026-08-22**: the pinned model is `intfloat/multilingual-e5-large` (1024 dims), not `multilingual-e5-small` (384 dims) as originally specified — `-small` does not exist in `fastembed`, only discovered when actually building the image. See `specs/021_local_embeddings_service.md`'s correction note for the full story and the revised resource sizing.
+
 ## Requirements
 
 ### Requirement: OpenAI-Compatible Embeddings Endpoint
@@ -14,7 +16,7 @@ The service MUST expose `POST /v1/embeddings` accepting `input` as either a sing
 
 - GIVEN a request body `{"input": "hola mundo", "model": "text-embedding-3-small"}`
 - WHEN `POST /v1/embeddings` is called
-- THEN the response has exactly one `data[0]` entry with `index: 0` and a 384-length `embedding`
+- THEN the response has exactly one `data[0]` entry with `index: 0` and a 1024-length `embedding`
 
 #### Scenario: List input preserves order
 
@@ -24,7 +26,7 @@ The service MUST expose `POST /v1/embeddings` accepting `input` as either a sing
 
 ### Requirement: Opt-In Query/Passage Prefixing
 
-The service MUST accept an optional request field `input_type` with allowed values `"query"` or `"passage"`. When omitted, the service MUST embed the input verbatim (no prefix). When present, the service MUST prepend the matching `intfloat/multilingual-e5-small` convention string (`"query: "` for `"query"`, `"passage: "` for `"passage"`) to each input before embedding. This MUST be additive on the wire: a client that never sends `input_type` (any stock OpenAI-SDK client) MUST observe no behavior change and MUST continue to receive verbatim embeddings.
+The service MUST accept an optional request field `input_type` with allowed values `"query"` or `"passage"`. When omitted, the service MUST embed the input verbatim (no prefix). When present, the service MUST prepend the matching `intfloat/multilingual-e5-large` convention string (`"query: "` for `"query"`, `"passage: "` for `"passage"`) to each input before embedding. This MUST be additive on the wire: a client that never sends `input_type` (any stock OpenAI-SDK client) MUST observe no behavior change and MUST continue to receive verbatim embeddings.
 
 #### Scenario: Omitted input_type embeds verbatim
 
@@ -52,13 +54,13 @@ The service MUST accept an optional request field `input_type` with allowed valu
 
 ### Requirement: Pinned Model and Dimension Guarantee
 
-The service MUST always serve `intfloat/multilingual-e5-small` producing 384-dimensional vectors, baked into the container image at build time. The service MUST NOT pad, truncate, or otherwise resize a vector to match a dimension other than 384, even if a client requests one.
+The service MUST always serve `intfloat/multilingual-e5-large` producing 1024-dimensional vectors, baked into the container image at build time. The service MUST NOT pad, truncate, or otherwise resize a vector to match a dimension other than 1024, even if a client requests one.
 
 #### Scenario: Every response uses the pinned dimension
 
 - GIVEN any valid embeddings request
 - WHEN the response is inspected
-- THEN every `embedding` array has exactly 384 elements
+- THEN every `embedding` array has exactly 1024 elements
 
 #### Scenario: A client-requested different dimension is rejected, never faked
 

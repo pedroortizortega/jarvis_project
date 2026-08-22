@@ -11,9 +11,18 @@ from __future__ import annotations
 
 from typing import Protocol
 
-MODEL_ID = "intfloat/multilingual-e5-small"
-DIMENSION = 384
+MODEL_ID = "intfloat/multilingual-e5-large"
+DIMENSION = 1024
 MAX_BATCH = 256
+# Corrected 2026-08-22: `multilingual-e5-small` was never a real
+# fastembed-supported model (build-time RUN in Dockerfile fails with
+# "Model ... is not supported in TextEmbedding" — only discovered when
+# actually building the image, not caught by any unit test since they
+# mock the embedder). fastembed's only multilingual e5 variant is
+# `-large` (1024 dims, ~2.24GB) — heavier than originally designed, but
+# it's the one that makes the D-10 query:/passage: prefix convention
+# genuinely meaningful (that convention is specific to e5's training,
+# not portable to an arbitrary other multilingual model).
 
 # D-10 (decided 2026-08-21): opt-in query/passage prefixing. Omitted
 # `input_type` embeds verbatim — this map only ever applies when the

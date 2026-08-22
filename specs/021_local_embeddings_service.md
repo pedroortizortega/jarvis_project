@@ -1,10 +1,23 @@
 # JARVIS Spec 021 - Software Design Document (SDD)
 ## Local Embeddings Service: endpoint `/v1/embeddings` compatible con OpenAI, self-hosted, sin egress externo
 
-**Estado:** Especificado (fase spec de SDD) — pendiente diseño (`sdd-design`), tareas (`sdd-tasks`) y aplicación (`sdd-apply`); ningún código ni manifiesto existe todavía
+**Estado:** Implementado y desplegable — los 3 PRs encadenados (#40 core, #41 HTTP, #42 manifiestos) mergeados a `main`. Imagen construida y probada en vivo (2026-08-22).
 **Fecha:** 2026-08-20
-**Versión:** 1.0
+**Versión:** 1.1 (corrección de modelo post-build, ver nota abajo)
 **Autor:** Pedro Ortiz (vía agente `sdd-spec`)
+
+**Corrección 2026-08-22:** `intfloat/multilingual-e5-small` — el modelo
+originalmente pinneado en este spec — **no existe en `fastembed`**
+(`ValueError: Model ... is not supported`, descubierto recién al
+construir la imagen de verdad; ningún test unitario lo detectó porque
+todos mockean el embedder). El único miembro multilingüe de la familia
+e5 que `fastembed` soporta es la versión **large** (1024 dims, ~2.24GB,
+no 384/~500MB). Todo el spec de abajo ya refleja el valor corregido.
+Recursos de `deployment.yaml` redimensionados en consecuencia: requests
+`1`/`3Gi`, limits `3`/`6Gi`, `OMP_NUM_THREADS=3` (antes `500m`/`768Mi`,
+`2`/`1536Mi`, `OMP_NUM_THREADS=2`). Verificado en vivo: build exitoso,
+`/healthz` en 200, embeddings reales de 1024 dims en español, `input_type`
+funcionando, batching funcionando.
 
 ---
 
@@ -70,10 +83,10 @@ decisiones asentadas de este spec — no quedan abiertas:
 
 | # | Pregunta | Decisión |
 |---|---|---|
-| 1 | Modelo y dimensión | `intfloat/multilingual-e5-small`, **384 dims**. Se prefiere sobre `BAAI/bge-small-en-v1.5` (el default inglés de fastembed) porque las memorias son español/mixtas y la calidad de recall multilingüe pesa más que el ahorro marginal de RAM/latencia del modelo solo-inglés. |
+| 1 | Modelo y dimensión | `intfloat/multilingual-e5-large`, **1024 dims**. Se prefiere sobre `BAAI/bge-small-en-v1.5` (el default inglés de fastembed) porque las memorias son español/mixtas y la calidad de recall multilingüe pesa más que el ahorro marginal de RAM/latencia del modelo solo-inglés. |
 | 2 | Nombre del directorio/servicio | `kubernetes/local-embeddings/` (directorio), Service `local-embeddings`, DNS `local-embeddings.llms.svc.cluster.local`. **No** `local-embeddings-service` — ese nombre fue solo naming informal de chat, superado. |
-| 3 | Compatibilidad de nombre de modelo | Se acepta **cualquier** string en `model` en el request y siempre se sirve el modelo fijo (`intfloat/multilingual-e5-small`), reflejando en la respuesta el nombre que pidió el cliente. Sin rechazo estricto de nombres desconocidos — cero parcheo de config por consumidor. |
-| 4 | Mismatch de dimensión | **Nunca** se rellena (pad) ni se trunca un vector para simular otra dimensión (p. ej. 1536) para consumidores que asumen el default de OpenAI. Cada consumidor declara su dimensión real (384) en su propia config cuando se cablee — eso queda fuera de alcance aquí. Pad/truncate produciría silenciosamente vectores incorrectos que rompen cosine similarity — es un "nunca" duro, no un default blando. |
+| 3 | Compatibilidad de nombre de modelo | Se acepta **cualquier** string en `model` en el request y siempre se sirve el modelo fijo (`intfloat/multilingual-e5-large`), reflejando en la respuesta el nombre que pidió el cliente. Sin rechazo estricto de nombres desconocidos — cero parcheo de config por consumidor. |
+| 4 | Mismatch de dimensión | **Nunca** se rellena (pad) ni se trunca un vector para simular otra dimensión (p. ej. 1536) para consumidores que asumen el default de OpenAI. Cada consumidor declara su dimensión real (1024) en su propia config cuando se cablee — eso queda fuera de alcance aquí. Pad/truncate produciría silenciosamente vectores incorrectos que rompen cosine similarity — es un "nunca" duro, no un default blando. |
 | 5 | Techo de batch | **256** inputs por request como máximo. Por encima se rechaza con un 4xx claro — nunca se trunca el batch silenciosamente ni se degrada. |
 | 6 | Prefijos `query:`/`passage:` de e5 (decisión post-diseño, 2026-08-21) | Campo opcional `input_type: "query"\|"passage"` en el request. Ausente → embed verbatim (default, sin cambios para cualquier cliente OpenAI-SDK estándar que no conoce el campo). Presente → antepone el prefijo correspondiente antes de embeber. Aditivo en el wire, nunca rompe compatibilidad. Reemplaza la decisión original de diseño (D-10 verbatim-sin-excepción) — se construye ahora, en este mismo change, no se difiere. |
 
@@ -95,11 +108,11 @@ Adicional, ya decidido en la propuesta (no abierto):
 POST /v1/embeddings
   body:  { "input": string | string[], "model": string, "encoding_format"?: "float"|"base64", "dimensions"?: int, "input_type"?: "query"|"passage" }
   200:   { "object": "list",
-           "data": [ { "object": "embedding", "index": int, "embedding": float[384] }, ... ],
+           "data": [ { "object": "embedding", "index": int, "embedding": float[1024] }, ... ],
            "model": <mismo string que se recibió en la request>,
            "usage": { "prompt_tokens": int, "total_tokens": int } }
   4xx:   "encoding_format" != "float" (p. ej. "base64")
-         "dimensions" presente y != 384
+         "dimensions" presente y != 1024
          len(input) > 256
          "input" vacío o de tipo inválido
          "input_type" presente y != "query"|"passage"
@@ -108,7 +121,7 @@ GET /healthz
   200 solo después de que el modelo terminó de cargar; no-ready antes
 
 GET /v1/models
-  200: { "object": "list", "data": [ { "id": "intfloat/multilingual-e5-small", "object": "model", ... } ] }
+  200: { "object": "list", "data": [ { "id": "intfloat/multilingual-e5-large", "object": "model", ... } ] }
 ```
 
 El nombre de modelo del request (`model`) nunca se valida contra una
@@ -129,7 +142,7 @@ contrato.
 | `readOnlyRootFilesystem: true` | El cache del modelo vive en la imagen (ruta de solo lectura); `HOME=/tmp` + `emptyDir` para cualquier escritura runtime |
 | Solo ClusterIP | Sin Ingress; alcanzable únicamente dentro del clúster |
 | Sin NetworkPolicy propia | No-op explícito — consumo intra-namespace amplio es el diseño deseado |
-| Dimensión fija | 384, siempre — nunca pad/truncate para simular otra dimensión |
+| Dimensión fija | 1024, siempre — nunca pad/truncate para simular otra dimensión |
 | Techo de batch | 256 inputs por request; por encima, 4xx, nunca truncado |
 
 ---
@@ -171,9 +184,9 @@ aquí explícitamente, no asumida en silencio.
 
 | Riesgo | Probabilidad | Mitigación |
 |---|---|---|
-| La dimensión es una puerta de un solo sentido una vez persistidos vectores | Alto impacto | Fijada en este spec (384, `multilingual-e5-small`); un cambio futuro es una migración de re-embedding, no un ajuste de config |
+| La dimensión es una puerta de un solo sentido una vez persistidos vectores | Alto impacto | Fijada en este spec (1024, `multilingual-e5-large`); un cambio futuro es una migración de re-embedding, no un ajuste de config |
 | Latencia de CPU en batches grandes bloquea el event loop | Media | Inferencia en threadpool; techo de batch de 256 con 4xx claro por encima |
-| Un consumidor manda parámetros de OpenAI que se ignoran (`encoding_format`, `dimensions`) | Media | Comportamiento explícito en el spec delta: se honra `float`, se rechaza `base64` y cualquier `dimensions` != 384 con error claro, nunca en silencio |
+| Un consumidor manda parámetros de OpenAI que se ignoran (`encoding_format`, `dimensions`) | Media | Comportamiento explícito en el spec delta: se honra `float`, se rechaza `base64` y cualquier `dimensions` != 1024 con error claro, nunca en silencio |
 | `readOnlyRootFilesystem` rompe escrituras de cache de ONNX/HF | Media | Ruta de cache horneada de solo lectura + `HOME=/tmp` con `emptyDir`, asertado por un test de manifiesto |
 
 ---

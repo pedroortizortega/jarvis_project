@@ -1,5 +1,12 @@
 # Tasks: Local Embeddings Service
 
+**Correction (2026-08-22, post-merge):** `intfloat/multilingual-e5-small`
+doesn't exist in `fastembed` — the shipped model is
+`intfloat/multilingual-e5-large` (1024 dims). Fixed directly in code/tests/manifests
+after all 3 PRs below had already merged; see `specs/021_local_embeddings_service.md`'s
+correction note. This file's task descriptions are kept as-written (all
+already `[x]`), not retroactively edited.
+
 ## Review Workload Forecast
 
 The design's own forecast (2 slices, ~640 / ~745 authored lines) exceeded the

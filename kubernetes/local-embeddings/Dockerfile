@@ -16,7 +16,7 @@ ENV HF_HUB_OFFLINE=0 \
     TRANSFORMERS_OFFLINE=0
 RUN python -c "\
 from fastembed import TextEmbedding; \
-TextEmbedding('intfloat/multilingual-e5-small', cache_dir='/opt/models/fastembed')"
+TextEmbedding('intfloat/multilingual-e5-large', cache_dir='/opt/models/fastembed')"
 
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin local-embeddings
 USER 10001

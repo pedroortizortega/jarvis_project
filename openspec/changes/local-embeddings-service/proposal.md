@@ -1,5 +1,12 @@
 # Proposal: Local Embeddings Service (self-hosted OpenAI-compatible `/v1/embeddings`)
 
+**Correction (2026-08-22, post-merge):** the model pin discussed below
+(`intfloat/multilingual-e5-small`) doesn't exist in `fastembed` — the
+shipped model is `intfloat/multilingual-e5-large` (1024 dims, ~2.24GB).
+See `specs/021_local_embeddings_service.md`'s correction note for the
+full story; this proposal is kept as the historical record of the
+original decision process, not updated line-by-line.
+
 ## Intent
 
 The cluster has no embeddings endpoint. Every memory backend that needs vectors (Honcho `embedding.model_config`, Graphiti `embedder`, Cognee embedding config, and later Hindsight / knowledge-vault / Engram) must currently point at OpenAI — external egress, per-token cost, and a hard dependency on a key. `llama-router` is not a substitute: it requests `nvidia.com/gpu: "1"` and is unavailable whenever spec 012 hands the GPU to Cloud, and its Qwen chat models are not embedding-optimized.

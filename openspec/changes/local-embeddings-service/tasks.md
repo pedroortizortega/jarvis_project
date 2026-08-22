@@ -64,28 +64,28 @@ Chain strategy: sequential-against-main
 
 ## Phase 4: Manifests — PR 3
 
-- [ ] 4.1 RED: create `kubernetes/local-embeddings/tests/test_local_embeddings_manifest.py` (`unittest.TestCase`, `yaml.safe_load_all`, per D-15/model-panel pattern) asserting: no `nvidia.com/gpu` in requests or limits; `readOnlyRootFilesystem: true`; `runAsNonRoot: true`; `runAsUser: 10001`; `capabilities.drop == ["ALL"]`; `seccompProfile.type == RuntimeDefault`; `allowPrivilegeEscalation: false`.
-- [ ] 4.2 RED: add resource-sizing assertions — `requests` `500m`/`768Mi`, `limits` `2`/`1536Mi`, and `OMP_NUM_THREADS=2` present in container env (D-14 resource sizing + thread-count callout).
-- [ ] 4.3 RED: add offline/cache assertions — `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HOME=/tmp`, `XDG_CACHE_HOME=/tmp`, `/tmp` emptyDir mounted (D-03, baked-model-at-build-time / zero-runtime-egress).
-- [ ] 4.4 RED: add `startupProbe` presence assertion (D-13) and Service assertions — `type: ClusterIP`, no `kind: Ingress` anywhere in the directory, `automountServiceAccountToken: false` (D-04).
-- [ ] 4.5 RED: add `kustomization.yaml` assertion — lists exactly `rbac.yaml, deployment.yaml, service.yaml`.
-- [ ] 4.6 GREEN: create `kubernetes/local-embeddings/Dockerfile` — sibling template (`python:3.12-slim`, uid 10001, uvicorn) plus a build-time `RUN python -c "...TextEmbedding(...)"` bake step into `/opt/models/fastembed` before `USER 10001` (D-02).
-- [ ] 4.7 GREEN: create `kubernetes/local-embeddings/deployment.yaml` — no GPU request, D-03 env vars, D-13 `startupProbe`, D-14 resources + `OMP_NUM_THREADS=2`, `readOnlyRootFilesystem: true` preserved.
-- [ ] 4.8 GREEN: create `kubernetes/local-embeddings/service.yaml` — ClusterIP `local-embeddings`, port 8080 -> `http`, commented no-Ingress rationale.
-- [ ] 4.9 GREEN: create `kubernetes/local-embeddings/rbac.yaml` — ServiceAccount only, comment explaining the absent Role/RoleBinding (D-04).
-- [ ] 4.10 GREEN: create `kubernetes/local-embeddings/kustomization.yaml` listing the three manifests.
-- [ ] 4.11 GREEN: run Phase 4 tests, confirm green.
+- [x] 4.1 RED: create `kubernetes/local-embeddings/tests/test_local_embeddings_manifest.py` (`unittest.TestCase`, `yaml.safe_load_all`, per D-15/model-panel pattern) asserting: no `nvidia.com/gpu` in requests or limits; `readOnlyRootFilesystem: true`; `runAsNonRoot: true`; `runAsUser: 10001`; `capabilities.drop == ["ALL"]`; `seccompProfile.type == RuntimeDefault`; `allowPrivilegeEscalation: false`.
+- [x] 4.2 RED: add resource-sizing assertions — `requests` `500m`/`768Mi`, `limits` `2`/`1536Mi`, and `OMP_NUM_THREADS=2` present in container env (D-14 resource sizing + thread-count callout).
+- [x] 4.3 RED: add offline/cache assertions — `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HOME=/tmp`, `XDG_CACHE_HOME=/tmp`, `/tmp` emptyDir mounted (D-03, baked-model-at-build-time / zero-runtime-egress).
+- [x] 4.4 RED: add `startupProbe` presence assertion (D-13) and Service assertions — `type: ClusterIP`, no `kind: Ingress` anywhere in the directory, `automountServiceAccountToken: false` (D-04).
+- [x] 4.5 RED: add `kustomization.yaml` assertion — lists exactly `rbac.yaml, deployment.yaml, service.yaml`.
+- [x] 4.6 GREEN: create `kubernetes/local-embeddings/Dockerfile` — sibling template (`python:3.12-slim`, uid 10001, uvicorn) plus a build-time `RUN python -c "...TextEmbedding(...)"` bake step into `/opt/models/fastembed` before `USER 10001` (D-02).
+- [x] 4.7 GREEN: create `kubernetes/local-embeddings/deployment.yaml` — no GPU request, D-03 env vars, D-13 `startupProbe`, D-14 resources + `OMP_NUM_THREADS=2`, `readOnlyRootFilesystem: true` preserved.
+- [x] 4.8 GREEN: create `kubernetes/local-embeddings/service.yaml` — ClusterIP `local-embeddings`, port 8080 -> `http`, commented no-Ingress rationale.
+- [x] 4.9 GREEN: create `kubernetes/local-embeddings/rbac.yaml` — ServiceAccount only, comment explaining the absent Role/RoleBinding (D-04).
+- [x] 4.10 GREEN: create `kubernetes/local-embeddings/kustomization.yaml` listing the three manifests.
+- [x] 4.11 GREEN: run Phase 4 tests, confirm green.
 
 ## Phase 5: Root-Suite Enforcement Bridge — PR 3
 
-- [ ] 5.1 RED: create `tests/test_local_embeddings.py` at repo root — expect import failure before the bridge exists.
-- [ ] 5.2 GREEN: implement the bridge — `sys.path.insert(...)` to `kubernetes/local-embeddings/tests/`, then `from test_embeddings_core import *` and `from test_local_embeddings_manifest import *` (per D-15; mirrors `tests/test_memory_router_registry.py:5`'s reach-across). Do **not** bridge `test_api.py` — HTTP/TestClient tests stay pytest-only.
-- [ ] 5.3 GREEN: run `python -m unittest tests.test_local_embeddings -v` from repo root, confirm the bridged core + manifest cases execute and pass under `unittest`.
-- [ ] 5.4 GREEN: run `cd kubernetes/local-embeddings && python -m pytest -v`, confirm all tests (core, manifest, HTTP) pass under `pytest` too.
-- [ ] 5.5 REFACTOR: confirm `test_api.py` is absent from both the bridge file and any `unittest discover` collection path.
+- [x] 5.1 RED: create `tests/test_local_embeddings.py` at repo root — expect import failure before the bridge exists.
+- [x] 5.2 GREEN: implement the bridge — `sys.path.insert(...)` to `kubernetes/local-embeddings/tests/`, then `from test_embeddings_core import *` and `from test_local_embeddings_manifest import *` (per D-15; mirrors `tests/test_memory_router_registry.py:5`'s reach-across). Do **not** bridge `test_api.py` — HTTP/TestClient tests stay pytest-only.
+- [x] 5.3 GREEN: run `python -m unittest tests.test_local_embeddings -v` from repo root, confirm the bridged core + manifest cases execute and pass under `unittest`.
+- [x] 5.4 GREEN: run `cd kubernetes/local-embeddings && python -m pytest -v`, confirm all tests (core, manifest, HTTP) pass under `pytest` too.
+- [x] 5.5 REFACTOR: confirm `test_api.py` is absent from both the bridge file and any `unittest discover` collection path.
 
 ## Phase 6: Spec Checklist Closeout — PR 3
 
-- [ ] 6.1 Update `specs/021_local_embeddings_service.md` section 8 checklist — mark "Tareas (sdd-tasks)" done, add the ordered PR1->PR2->PR3 task-group summary (mirroring this file's Suggested Work Units), leave "Implementación (sdd-apply)" pending until PR 3 lands.
-- [ ] 6.2 Confirm `openspec/specs/local-embeddings/spec.md` requirements match what was actually implemented (no drift); no edits expected unless a scenario changed during 4.x/5.x.
-- [ ] 6.3 Run the full local suite one more time (`python -m unittest tests.test_local_embeddings -v` + `cd kubernetes/local-embeddings && python -m pytest -v`) as the PR 3 closing gate.
+- [x] 6.1 Update `specs/021_local_embeddings_service.md` section 8 checklist — mark "Tareas (sdd-tasks)" done, add the ordered PR1->PR2->PR3 task-group summary (mirroring this file's Suggested Work Units); since PR 3 is landing now, "Implementación (sdd-apply)" is also marked complete with the full-chain summary.
+- [x] 6.2 Confirm `openspec/specs/local-embeddings/spec.md` requirements match what was actually implemented (no drift); no edits needed — every requirement/scenario maps directly to the Phase 4-6 manifests and tests.
+- [x] 6.3 Run the full local suite one more time (`python -m unittest tests.test_local_embeddings -v` + `cd kubernetes/local-embeddings && python -m pytest -v`) as the PR 3 closing gate — 38/38 and 47/47 green.

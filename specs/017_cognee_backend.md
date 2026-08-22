@@ -1,7 +1,7 @@
 # JARVIS Spec 017 - Software Design Document (SDD)
 ## Memory Router: adaptador Cognee para `reflect` en `/projects/*`
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Cognee; bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
+**Estado:** Validado parcialmente contra una instancia real de Cognee (2026-08-22) — encontró y corrigió 4 diferencias reales de wire format (§9.1). `health()` y la aceptación del request de `reflect()` confirmados en vivo con el adaptador real del repo; el round-trip completo (ingesta→grafo→búsqueda) quedó bloqueado por un límite de infraestructura ajeno al adaptador (extracción estructurada de `cognify` incompatible con `codex-shim`, ver §9.1). Bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 / spec 016 §8 resuelto (ver spec 014 §8); despliegue de una instancia real de Cognee en el clúster sigue fuera de alcance de esta validación
 **Fecha:** 2026-08-20
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -369,10 +369,66 @@ datos, sin estado almacenado, sin limpieza del lado Cognee.
 - [x] `git diff --stat` confirma cero cambios en `contracts.py` y
   `registry.py`
 - [x] Suite completa (`python -m unittest discover -s tests`) verde
-- [ ] Validación contra instancia real de Cognee — fuera de alcance,
-  follow-up explícito
-- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
-- [ ] Path de ingestión de Cognee (`/remember`, add+cognify) — diferido
+- [x] Validación contra instancia real de Cognee (2026-08-22, parcial) — ver §9.1
+- [ ] Despliegue real de una instancia de Cognee en el clúster — sigue
+  sin ejecutarse; esta validación corrió contra un container Docker
+  efímero ya destruido
+- [ ] Path de ingestión de Cognee (`/api/v1/add` + `/api/v1/cognify`) —
+  diferido; confirmado en vivo que `/add` funciona (multipart file
+  upload, no texto plano), `cognify` bloqueado por el límite de §9.1
+
+---
+
+### 9.1 Validación contra una instancia real (2026-08-22, parcial)
+
+Levantada `cognee/cognee:main` (self-hosted, SQLite embebido) contra
+`codex-shim` para el LLM y `local-embeddings` (spec 021,
+`intfloat/multilingual-e5-large`, vía `EMBEDDING_PROVIDER=openai_compatible`)
+para embeddings. La versión corrida (`1.5.1-local`) trae **dos
+generaciones de API simultáneas**: la vieja (`add`/`cognify`/`search`) y
+una nueva (`remember`/`recall`/`forget`/`improve`) — se investigó el
+`openapi.json` real de la instancia en vivo antes de decidir, no
+documentación desactualizada.
+
+Encontradas y corregidas **4 diferencias reales de wire format** en
+`hermes-native/memory-router/src/memory_router/backends/cognee.py`,
+confirmadas contra el `openapi.json` real de la instancia corriendo:
+
+| | Adaptador (bug) | Real |
+|---|---|---|
+| Ruta | `POST /recall` | `POST /api/v1/search` |
+| Health | `GET /healthz` | `GET /health` |
+| Campo de tipo de búsqueda | `search_type` (snake_case) | `searchType` (camelCase) |
+| Forma de la respuesta | objeto único `{result\|answer: str}` | **array** de `{search_result, dataset_id, dataset_name}` (`SearchResult[]`) |
+
+Circuito parcial probado con el propio `CogneeBackend` del repo (no curl
+crudo): `health()` → OK. `reflect()` mandó el request corregido
+(`searchType` camelCase, ruta real) y el server devolvió un error de
+negocio real y específico (`404 DatasetNotFoundError`), no un 404 de
+ruta inexistente ni un 422 de validación — confirma que el wire format
+del request es correcto, aunque el round-trip completo no cerró.
+
+**Límite real encontrado, no un bug del adaptador:** `cognify` (la
+construcción del grafo) usa
+`NativeLiteLLMAdapter.acreate_structured_output` de Cognee, que exige
+salida JSON estructurada estricta del LLM. `codex-shim` no preserva esa
+restricción al traducir hacia la sesión OAuth de Codex — el modelo
+devuelve JSON con nombres de campo plausibles pero incorrectos
+(`source`/`target` en vez de `source_node_id`/`target_node_id`/etc.),
+Cognee reintenta con backoff creciente (32s, 64s, ...) sin converger.
+Confirmado también en vivo (ingesta real por `POST /api/v1/add`, que
+exige `multipart/form-data` con un archivo real, no texto plano en el
+body — otro detalle no documentado). Con una API key real de OpenAI en
+vez de `codex-shim` esto probablemente funcionaría (mismo patrón que
+usamos para el LLM de Graphiti/Honcho/Hindsight vía `codex-shim` sin
+problema — el problema es específico de la restricción de schema
+estricto, no de `codex-shim` en general), pero se decidió no gastar una
+key real para esto y dejarlo documentado como límite conocido en vez de
+forzarlo.
+
+Suite completa del repo (356 tests) verde después de los fixes.
+Containers de prueba destruidos al terminar; ninguna credencial quedó en
+disco.
 
 ---
 

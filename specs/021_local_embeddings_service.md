@@ -201,26 +201,33 @@ se cablee, lo cual está fuera de alcance de este change.
 - [x] Conflicto de convención de testing verificado y resuelto (pytest.ini)
 - [x] Diseño (`sdd-design`) — completo, ver `openspec/changes/local-embeddings-service/design.md` (D-01..D-15, threat matrix, delivery forecast)
 - [x] Tareas (`sdd-tasks`) — completo, ver `openspec/changes/local-embeddings-service/tasks.md`
-- [ ] Implementación (`sdd-apply`) — pendiente
+- [x] Implementación (`sdd-apply`) — completo, las 3 PRs encadenadas landed (ver 8.1)
 
-### 8.1 Resumen de tareas (chained PRs)
+### 8.1 Resumen de tareas (chained PRs) — cadena completa
 
 El forecast de `design.md` excedía el budget de 400 líneas revisadas en
 ambas slices propuestas (~640 y ~745). `sdd-tasks` re-cortó el trabajo en
 tres PRs encadenados siguiendo las costuras ya identificadas en el diseño,
-cada uno por debajo de ~400 líneas autoría:
+cada uno por debajo de ~400 líneas autoría. Las tres PRs ya landearon
+(`sequential-against-main`, cada una mergeada antes de que la siguiente
+ramificara):
 
-- **PR 1 — Core puro + adaptor fastembed** (~365 líneas): `app/embeddings.py`
+- **PR 1 — Core puro + adaptor fastembed** (~365 líneas, landed): `app/embeddings.py`
   (validación, batching, ensamblado de respuesta, taxonomía de error),
   `app/model.py` (carga lazy de `fastembed`), `test_embeddings_core.py`
   (`unittest.TestCase`). Sin servidor, sin cluster — embedder falso inyectado.
-- **PR 2 — Capa HTTP** (~280 líneas): `app/main.py` (lifespan, 3 rutas,
+- **PR 2 — Capa HTTP** (~280 líneas, landed): `app/main.py` (lifespan, 3 rutas,
   semáforo, envelope de error OpenAI), `test_api.py` (`TestClient`,
   pytest-only), `pytest.ini`.
-- **PR 3 — Manifiestos + enforcement + cierre de spec** (~290 líneas):
+- **PR 3 — Manifiestos + enforcement + cierre de spec** (~290 líneas, esta PR):
   `Dockerfile`, `deployment.yaml`, `service.yaml`, `rbac.yaml`,
   `kustomization.yaml`, `test_local_embeddings_manifest.py`, el bridge
   `tests/test_local_embeddings.py` (D-15), y el cierre de este checklist.
+
+Suite completa verificada al cierre de PR 3: `python -m unittest
+tests.test_local_embeddings -v` (38 casos, core + manifest, bajo
+`unittest`) y `cd kubernetes/local-embeddings && python -m pytest -v` (47
+casos, core + manifest + HTTP, bajo `pytest`) — ambos en verde.
 
 Detalle completo, orden RED/GREEN/REFACTOR y comandos de test enfocados en
 `openspec/changes/local-embeddings-service/tasks.md`.

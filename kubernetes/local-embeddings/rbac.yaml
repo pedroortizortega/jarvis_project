@@ -1,0 +1,14 @@
+# D-04: local-embeddings needs zero Kubernetes API access — it only
+# serves POST /v1/embeddings, GET /healthz, and GET /v1/models over HTTP.
+# It gets its own least-privilege ServiceAccount (never shares one with
+# codex-shim or model-panel) but deliberately has no Role/RoleBinding:
+# there is nothing in the cluster this service needs to read or write.
+# `automountServiceAccountToken: false` in deployment.yaml is the actual
+# enforcement; this ServiceAccount exists only so `kustomization.yaml`
+# stays conventional and the "no RBAC" decision is recorded, not inferred
+# from an absence.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-embeddings
+  namespace: llms

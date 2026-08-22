@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-embeddings
+  namespace: llms
+  labels:
+    app.kubernetes.io/name: local-embeddings
+    app.kubernetes.io/part-of: local-llm-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: local-embeddings
+  template:
+    metadata:
+      labels:
+        app: local-embeddings
+        app.kubernetes.io/name: local-embeddings
+        app.kubernetes.io/part-of: local-llm-platform
+    spec:
+      serviceAccountName: local-embeddings
+      # D-04: this service needs no Kubernetes API access at all.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: local-embeddings
+          image: local-embeddings:local
+          imagePullPolicy: IfNotPresent
+          env:
+            # D-03: the model is baked into the image (see Dockerfile);
+            # these vars force a loud startup failure instead of a silent
+            # network fetch if the baked cache is ever missing.
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+            # HOME/XDG_CACHE_HOME point at the /tmp emptyDir so any stray
+            # write from fastembed/HF lands there, not on the read-only
+            # root filesystem.
+            - name: HOME
+              value: /tmp
+            - name: XDG_CACHE_HOME
+              value: /tmp
+            # D-14: cap ORT intra-op threads to match the CPU limit below —
+            # otherwise ORT spawns one thread per host core and gets
+            # CFS-throttled into worse latency than single-threaded.
+            - name: OMP_NUM_THREADS
+              value: "2"
+            - name: ORT_INTRA_OP_NUM_THREADS
+              value: "2"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            # D-14: sized for a resident ~470MB fp32 ONNX model plus
+            # interpreter/tokenizer and ORT arena headroom on a 256-item
+            # batch — diverges deliberately from the sibling proxy sizing.
+            requests:
+              cpu: "500m"
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          # D-13: cold-loading ~500MB of ONNX on a CPU node takes tens of
+          # seconds; without a startupProbe the tight liveness settings
+          # below would CrashLoop the pod before it ever became ready.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

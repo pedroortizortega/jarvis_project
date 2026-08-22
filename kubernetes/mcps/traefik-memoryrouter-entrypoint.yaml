@@ -1,0 +1,29 @@
+# Dedicated Traefik entryPoint for memory-router — NOT scoped to `mcps`.
+# This is a HelmChartConfig overlay on the cluster's shared, k3s-bundled
+# Traefik (kube-system/traefik), applied cluster-wide. It reserves a
+# separate TLS entryPoint (:8444, service-exposed) so memory-router's own
+# mTLS client CA (memory-router-client-ca / mcps-memory-router-mtls) never
+# shares SNI with the existing `engram-tailnet` IngressRoute on `websecure`
+# (:8443) — two IngressRoutes on the same Host()+entryPoint cannot each
+# carry a different TLSOption; Traefik resolves TLS per SNI before it ever
+# sees the HTTP path (see specs/014_memory_router.md §8 discussion).
+#
+# Applying this restarts the shared Traefik pod (brief interruption to
+# Engram Cloud traffic too, since it's the same ingress controller for the
+# whole `mcps` namespace). Confirm before `kubectl apply` on a live cluster.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      memoryrouter:
+        port: 8444
+        expose:
+          default: true
+        exposedPort: 8444
+        protocol: TCP
+        tls:
+          enabled: true

@@ -1,11 +1,6 @@
 # memory-router — Phase 1 deployment manifest (SDD change: memory-router)
 #
-# NOT YET APPLIED TO ANY CLUSTER. `kubectl apply` is blocked on resolving the
-# Engram Cloud manifest-ownership prerequisite (design.md "Open Questions" —
-# the `mcps` namespace's existing manifests are untracked with an
-# undocumented origin, per specs/011_engram_cloud_centralized.md §0).
-# This file is authored now so the deployment shape is reviewable; do not
-# apply it until that prerequisite is resolved.
+# Namespace-ownership blocker resolved, see specs/014_memory_router.md §8.
 apiVersion: v1
 kind: ConfigMap
 metadata:

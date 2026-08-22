@@ -1,6 +1,9 @@
 # memory-router — Phase 1 deployment manifest (SDD change: memory-router)
-# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
-# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+# Namespace-ownership blocker resolved, see specs/014_memory_router.md §8.
+# Image built locally (no registry): hermes-native/memory-router/Dockerfile,
+# `docker build -t memory-router:local .` + `k3s ctr images import` — see
+# docs/services/model-panel.md for the exact local-image workflow this
+# follows. Secrets referenced below must still be created out-of-band.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: memory-router
-          image: memory-router:0.1.0 # placeholder — no registry/build pipeline exists yet
+          image: memory-router:local # built + imported locally, no registry
           imagePullPolicy: IfNotPresent
           command: ["memory-router"]
           securityContext:

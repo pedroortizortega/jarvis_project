@@ -1,11 +1,22 @@
 # memory-router — Phase 1 deployment manifest (SDD change: memory-router)
-# NOT YET APPLIED. See memory-router-configmap.yaml header for the blocking
-# prerequisite (Engram Cloud manifest-ownership, design.md Open Questions).
+# Namespace-ownership blocker resolved, see specs/014_memory_router.md §8.
 #
-# Tailnet-only, mTLS-terminated at Traefik — same pattern as the existing
-# `engram-tailnet` IngressRoute (specs/011_engram_cloud_centralized.md §1).
-# Host is a placeholder: confirm the real Tailnet MagicDNS name for this
-# cluster (spec 011 uses `trantor.tail07dff9.ts.net`) before applying.
+# Tailnet-only, mTLS-terminated at Traefik. Uses its own entryPoint
+# (`memoryrouter`, :8444 — see traefik-memoryrouter-entrypoint.yaml) AND
+# its own hostname (`memory-router.trantor.tail07dff9.ts.net`) instead of
+# sharing `engram-tailnet`'s Host (`trantor.tail07dff9.ts.net`, spec 011
+# §1). Live-verified: a dedicated entryPoint alone is NOT enough — Traefik
+# resolves the TLS server certificate by SNI (hostname) against one
+# global store shared across every entryPoint on the instance, so two
+# IngressRoutes on the same Host still collide on which certificate (and
+# therefore which TLSOption/client CA) gets served, regardless of port.
+# Only a distinct hostname gives memory-router its own SNI slot, which is
+# what actually isolates its client CA / mTLS policy from Engram's.
+#
+# MagicDNS doesn't resolve subdomains by default, so clients need a manual
+# /etc/hosts entry pointing this hostname at the cluster's LB VIP — same
+# manual-onboarding pattern spec 011 already uses for remote clients:
+#   <VIP, e.g. 192.168.1.240>  memory-router.trantor.tail07dff9.ts.net
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -13,9 +24,9 @@ metadata:
   namespace: mcps
 spec:
   entryPoints:
-    - websecure
+    - memoryrouter
   routes:
-    - match: Host(`memory-router.TAILNET_MAGICDNS_PLACEHOLDER`)
+    - match: Host(`memory-router.trantor.tail07dff9.ts.net`)
       kind: Rule
       services:
         - name: memory-router

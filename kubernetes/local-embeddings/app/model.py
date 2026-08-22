@@ -54,5 +54,13 @@ def load_embedder() -> FastEmbedAdapter:
     """
     from fastembed import TextEmbedding  # lazy import — keep at call site
 
-    text_embedding = TextEmbedding(MODEL_ID, cache_dir=CACHE_DIR)
+    # `local_files_only=True` is required, not optional (found live —
+    # 2026-08-22): `HF_HUB_OFFLINE=1` alone still lets huggingface_hub's
+    # snapshot resolution attempt network access to resolve the "main"
+    # ref, which then raises instead of silently falling back to the
+    # baked local cache — the pod CrashLoopBackOff'd on every start
+    # despite the model being correctly baked into the image (D-02).
+    # `local_files_only=True` is the actual, stronger guarantee that
+    # skips resolution and reads straight from `cache_dir`.
+    text_embedding = TextEmbedding(MODEL_ID, cache_dir=CACHE_DIR, local_files_only=True)
     return FastEmbedAdapter(text_embedding)

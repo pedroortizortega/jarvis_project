@@ -1,7 +1,7 @@
 # JARVIS Spec 015 - Software Design Document (SDD)
 ## Memory Router: segundo adaptador de backend (Hindsight)
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Hindsight; bloqueante de despliegue heredado de spec 012 §8 resuelto (ver spec 014 §8), despliegue real pendiente de ejecutar
+**Estado:** Validado contra una instancia real de Hindsight, de punta a punta (2026-08-22) — encontró y corrigió 5 diferencias reales de wire format (§9.1), más significativas que un simple typo de ruta. Circuito completo probado: creación lazy de banco (404→creación→reintento) → `store()` real con extracción por LLM real (vía `codex-shim`) → `search()` real con embeddings/reranker locales propios de Hindsight (sin depender de `local-embeddings` — Hindsight trae su propio proveedor local por default) devolviendo el hecho correcto con score real. Bloqueante de despliegue heredado de spec 012 §8 resuelto (ver spec 014 §8); despliegue de una instancia real de Hindsight en el clúster sigue fuera de alcance de esta validación (se probó contra un container Docker efímero, ya destruido)
 **Fecha:** 2026-08-19
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -215,20 +215,24 @@ Fase 1. Sin migración de datos — el router sigue sin desplegar.
 - **Bloqueante de despliegue (heredado de spec 012 §8):** resuelto — ver
   spec 014 §8 (propiedad del namespace `mcps` confirmada por el owner del
   proyecto: creado vía OpenCode como hub de servicios MCP para la red
-  local). Este change sigue sin desplegar nada; el adaptador solo se
-  probó contra un transporte HTTP stubbed.
-- Las rutas y payloads exactos de `ENDPOINTS` están **sin verificar**
-  contra una instancia real de Hindsight o documentación autoritativa —
-  `ENDPOINTS` es la única superficie revisable si cambian.
-- ¿Hindsight auto-crea banks en `retain` (dejando la rama 404 como código
-  muerto), o devuelve otro status para un bank desconocido?
-- Naming de banks: ¿Hindsight impone un límite de longitud o un charset
-  más estricto que `[a-z0-9_-]`? Nombres de proyecto largos podrían
-  necesitar truncamiento con sufijo hash.
-- Esquema de resultado de `recall`: ¿el score viene normalizado de forma
-  comparable al de Engram, de cara a un futuro ranking cruzado?
-- Validación contra una instancia viva de Hindsight sigue siendo un
-  follow-up explícito — solo hay prueba a nivel unitario.
+  local).
+- ~~Las rutas y payloads exactos de `ENDPOINTS` están sin verificar~~ —
+  **resuelto, ver §9.1**: estaban mal, no solo sin verificar. Reescritos
+  contra la API real.
+- **¿Hindsight auto-crea banks en `retain`?** No — confirmado en vivo:
+  `retain` contra un bank inexistente devuelve `404` de verdad, la rama
+  lazy-create-on-404 **no es código muerto**, se ejercitó tal cual está
+  diseñada (404 → `PUT` de creación → reintento exitoso).
+- Naming de banks: sin estresar con nombres largos/charset raro en esta
+  pasada — sigue abierto.
+- Esquema de resultado de `recall`: **resuelto, distinto de lo asumido**
+  — no es un score único 0-1 comparable a Engram. El campo real es
+  `scores.final` (combinación de reranker+semantic+keyword, puede superar
+  1.0 — vimos `1.095` en vivo), no un `score` top-level normalizado. Si
+  algún día se arma un ranking cruzado entre backends, este score
+  necesita su propia normalización antes de compararse con otros.
+- ~~Validación contra una instancia viva de Hindsight~~ — **resuelto, ver
+  §9.1**.
 
 ---
 
@@ -248,8 +252,53 @@ Fase 1. Sin migración de datos — el router sigue sin desplegar.
 - [x] `pyproject.toml` — entry point `hindsight` registrado
 - [x] Verificación manual: `Registry().all_backends()` devuelve ambos adaptadores tras reinstalar el paquete
 - [x] `git diff` confirma cero cambios en router core
-- [ ] Validación contra instancia real de Hindsight — fuera de alcance, follow-up explícito
-- [ ] Despliegue real — desbloqueado (spec 014 §8), pendiente de ejecutar
+- [x] Validación contra instancia real de Hindsight (2026-08-22) — ver §9.1
+- [ ] Despliegue real de una instancia de Hindsight en el clúster —
+  desbloqueado a nivel de namespace (spec 014 §8), pero sigue sin
+  ejecutarse; esta validación corrió contra un container Docker efímero
+  ya destruido, no infraestructura persistente
+
+---
+
+### 9.1 Validación contra una instancia real (2026-08-22)
+
+Levantada `ghcr.io/vectorize-io/hindsight` (self-hosted, Postgres
+embebido, sin dependencias externas más allá del LLM) contra `codex-shim`
+(`llms/codex-shim` en el clúster, sesión OAuth de Codex) para el LLM de
+extracción de hechos. Los embeddings y el reranker corrieron con el
+proveedor **local** propio de Hindsight (`BAAI/bge-small-en-v1.5` +
+`cross-encoder/ms-marco-MiniLM-L-6-v2`, default de fábrica) — no hizo
+falta `local-embeddings` (spec 021) para esta validación en particular.
+
+Encontradas y corregidas **5 diferencias reales de wire format** en
+`hermes-native/memory-router/src/memory_router/backends/hindsight.py`,
+confirmadas contra la documentación de API real de Hindsight y contra el
+server corriendo — más significativas que un typo de ruta, es una forma
+de payload distinta:
+
+| | Adaptador (bug) | Real |
+|---|---|---|
+| Crear bank | `POST /v1/banks` con `{bank_id}` en el body | `PUT /v1/default/banks/{bank_id}` con `{mission}` — la creación es "create-or-update", scopeada por la URL, no por un campo del body |
+| Retain | `POST /v1/banks/{id}/retain` con `{content, metadata}` | `POST /v1/default/banks/{id}/memories` con `{items: [{content, metadata}]}` — API orientada a batch, ni un solo item se manda suelto |
+| Recall | `POST /v1/banks/{id}/recall` | `POST /v1/default/banks/{id}/memories/recall` |
+| Campo de texto en resultado | `results[].content` | `results[].text` |
+| Campo de score | `results[].score` | `results[].scores.final` (compuesto, puede superar 1.0) |
+
+`health` (`GET /health`) era el único endpoint que ya estaba bien.
+Circuito completo probado con el propio `HindsightBackend` del repo (no
+curl crudo): `health()` → OK; `store()` sobre un namespace nunca antes
+usado → `404` real → lazy-create real (`PUT`) → reintento exitoso →
+`committed`; `search()` sobre la misma pregunta → devolvió el hecho
+correcto con un score real (`1.095`). Confirmado en el camino: `retain`
+sincrónico no devuelve un id por item (`StoreResult.id` queda `""` —
+comportamiento honesto, no un bug a tapar con un id fabricado, ya que el
+campo es `str` no `Optional[str]`). Suite completa del repo (356 tests)
+verde después de los fixes. Container de prueba destruido al terminar;
+ninguna credencial quedó en disco.
+
+Sigue pendiente, fuera de alcance de esta validación: desplegar
+Hindsight como infraestructura real y persistente del clúster (esto solo
+probó el adaptador contra una instancia efímera local).
 
 ---
 

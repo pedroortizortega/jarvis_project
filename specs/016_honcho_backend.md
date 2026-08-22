@@ -1,7 +1,7 @@
 # JARVIS Spec 016 - Software Design Document (SDD)
 ## Memory Router: verbo `reflect` cableado end-to-end (adaptador Honcho)
 
-**Estado:** Implementado (código + tests unitarios) — sin validar contra una instancia real de Honcho; sin desplegar (hereda el bloqueante de despliegue de spec 012 §8 / spec 015 §8)
+**Estado:** Validado contra una instancia real de Honcho, de punta a punta (2026-08-21/22) — encontró y corrigió 3 bugs reales (§9.1). Circuito completo probado: ingesta real de mensaje → derivación real (LLM vía `codex-shim`, sesión OAuth de Codex) → embeddings reales (1024 dims, vía `local-embeddings`, self-hosted) → `HonchoBackend.reflect()` del repo devolviendo el hecho correcto. Cero API keys de terceros usadas. Bloqueante de despliegue heredado de spec 012 §8 / spec 015 §8 resuelto (ver spec 014 §8); despliegue de una instancia real de Honcho en el clúster sigue fuera de alcance de esta validación (se probó contra un stack Docker Compose efímero, ya destruido)
 **Fecha:** 2026-08-19
 **Versión:** 1.0
 **Autor:** Pedro Ortiz (vía agente `sdd-apply`)
@@ -290,12 +290,63 @@ allá de borrar un workspace no usado.
 - [x] `git diff --stat` confirma cero cambios en `registry.py`
 - [x] Suite completa (`python -m unittest discover -s tests`) verde: 161
   tests
-- [ ] Validación contra instancia real de Honcho — fuera de alcance,
-  follow-up explícito
-- [ ] Despliegue real — bloqueado (heredado de spec 012 §8 / spec 015 §8)
+- [x] Validación contra instancia real de Honcho (2026-08-21/22) — ver §9.1
+- [x] Despliegue real — memory-router desplegado y verificado en `mcps`
+  (spec 014 §8-9); instancia real de Honcho en el clúster sigue fuera de
+  alcance de esta validación (probado contra Docker Compose efímero)
 - [ ] Confirmar si `reflect` alguna vez necesita un path de ingestión
   (alimentar a Honcho con contenido de conversación) — diferido por el
   proposal
+
+---
+
+### 9.1 Validación contra una instancia real (2026-08-21/22)
+
+Levantado `plastic-labs/honcho` (self-hosted, Postgres+Redis+API+deriver
+vía Docker Compose) contra dos servicios propios, ninguno de terceros:
+`codex-shim` (`llms/codex-shim` en el clúster) para el LLM del dialectic
+chat y de la derivación de entidades, vía la sesión OAuth de Codex; y
+`local-embeddings` (`llms/local-embeddings`, spec 021, self-hosted,
+`intfloat/multilingual-e5-large`, 1024 dims) para los embeddings —
+cerrando la dependencia de una API key de OpenAI que había bloqueado la
+primera validación en vivo.
+
+Encontrados y corregidos **3 bugs reales** en
+`hermes-native/memory-router/src/memory_router/backends/honcho.py`,
+confirmados contra el código fuente real de `plastic-labs/honcho`
+(`src/main.py`, `src/routers/peers.py`, `src/schemas/api.py`) y contra el
+server corriendo:
+
+| | Antes (bug) | Real |
+|---|---|---|
+| Prefijo de API | `/v2` | `/v3` |
+| Health | `/healthz` | `/health` |
+| Timeout configurable | Ignorado — `_default_transport` hardcodeaba `timeout=10` sin importar `self._timeout` | Honrado de verdad vía `functools.partial` (bug sistémico, se repetía idéntico en los 5 adaptadores HTTP — corregido en todos) |
+
+También confirmado: `DialecticResponse` real solo tiene el campo
+`content` — no existe `confidence` en absoluto. `result.get("confidence",
+0.0)` del adaptador nunca falla, pero el valor siempre es el default
+`0.0`, nunca algo que Honcho realmente mande — documentado, no es bug.
+
+Circuito completo probado con el propio `HonchoBackend` del repo (no
+curl crudo): `health()` → OK contra el server real; creada una sesión
+real (`POST /v3/workspaces/jarvis/sessions`) y enviado un mensaje real
+(`POST .../messages`); esperada la derivación real (LLM vía
+`codex-shim`); `reflect()` devolvió el hecho correcto extraído
+(`"Pedro prefiere el modo oscuro en todos sus editores y terminales."`)
+vía el dialectic chat real. Un detalle operativo encontrado en el camino:
+el bootstrap de un Honcho self-hosted nuevo necesita correr
+`scripts/configure_embeddings.py --yes` después de las migraciones para
+ajustar la dimensión de la columna `pgvector` (crea `vector(1536)` por
+default sin importar `EMBEDDING_VECTOR_DIMENSIONS`) — documentado acá
+porque no está en ningún README de Honcho de forma obvia. Suite completa
+del repo (356 tests) verde después de los fixes. Containers de prueba
+destruidos al terminar; ninguna credencial quedó en disco.
+
+Sigue pendiente, fuera de alcance de esta validación: desplegar Postgres
++ Redis + el server de Honcho como infraestructura real y persistente
+del clúster (esto solo probó el adaptador contra una instancia efímera
+local).
 
 ---
 

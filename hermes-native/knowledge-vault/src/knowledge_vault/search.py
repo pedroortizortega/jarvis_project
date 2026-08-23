@@ -48,7 +48,12 @@ def search_vault(query, vault_directory, index_path, limit=5):
     if not result.available:
         try:
             build_index(vault, index_path)
-        except OSError as error:
+        except (OSError, ValueError) as error:
+            # OSError: can't read/write the index or a note file (e.g. the
+            # read-only ReadOnlyPaths= the search unit runs under — F-4).
+            # ValueError: a malformed note, e.g. UnicodeDecodeError on a
+            # non-UTF-8 file (read_text(encoding="utf-8") in retrieval.py).
+            # Either way, never leak the raw exception past this boundary.
             raise IndexUnavailable(str(error)) from error
         result = Retriever(vault, index_path).search(query, limit=limit)
     if not result.available:

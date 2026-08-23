@@ -4,7 +4,13 @@ import unittest
 from pathlib import Path
 
 from knowledge_vault import retrieval, search
-from knowledge_vault.layout import knowledge_root, pending_root, published_notes
+from knowledge_vault.layout import (
+    VaultLocked,
+    knowledge_root,
+    pending_root,
+    published_notes,
+    vault_lock,
+)
 from knowledge_vault.retrieval import build_index, vault_revision
 from knowledge_vault.search import search_vault
 
@@ -31,6 +37,27 @@ class PublishedNotesTests(unittest.TestCase):
             (pending_root(tree) / "draft.md").write_text(NOTE, encoding="utf-8")
             found = {path.name for path in published_notes(tree)}
             self.assertEqual({"kubernetes.md"}, found)
+
+
+class VaultLockTests(unittest.TestCase):
+    def test_contended_lock_fails_fast_not_blocking(self):
+        """D-08: reuses Publisher._fence()'s LOCK_NB + typed-exception shape,
+        not just its use of flock — a second writer must fail immediately,
+        never hang waiting for the first to release."""
+        with tempfile.TemporaryDirectory() as root:
+            tree = tree_with(root)
+            with vault_lock(tree):
+                with self.assertRaises(VaultLocked):
+                    with vault_lock(tree):
+                        pass
+
+    def test_lock_releases_after_the_with_block(self):
+        with tempfile.TemporaryDirectory() as root:
+            tree = tree_with(root)
+            with vault_lock(tree):
+                pass
+            with vault_lock(tree):
+                pass  # would raise VaultLocked if the first lock leaked
 
 
 class ThirdFolderIsInvisibleTests(unittest.TestCase):

@@ -50,9 +50,9 @@ Note: `specs/022_hindsight_deployment.md` and both OpenSpec delta specs (`opensp
 
 ## Phase 5: Manifest Enforcement Tests (PR 2)
 
-- [ ] 5.1 Create `tests/test_hindsight_manifest.py` (`unittest.TestCase` + `yaml.safe_load_all`, following `kubernetes/local-embeddings/tests/test_local_embeddings_manifest.py`): image/pull policy, container port 8888, Service ClusterIP/port/selector, `replicas: 1`/`Recreate`, PVC size/class/mode, both secretKeyRefs by exact `{name, key}`, no plaintext secret `value:`, `HINDSIGHT_API_LLM_BASE_URL` targets codex-shim, D-02 security context (`runAsNonRoot`, numeric non-zero `runAsUser`, `fsGroup == runAsUser`), `readOnlyRootFilesystem: true`, `capabilities.drop == ["ALL"]`, `startupProbe.failureThreshold >= 60`, no `kind: Ingress` in `hindsight-*.yaml`.
-- [ ] 5.2 In the same file, add the cross-manifest test: `memory-router-deployment.yaml`'s `HINDSIGHT_TOKEN`/`HINDSIGHT_AUTH_MODE` match the Hindsight Deployment's `HINDSIGHT_API_TENANT_API_KEY` secretKeyRef field-by-field, and confirm no `HINDSIGHT_BASE_URL` is present.
-- [ ] 5.3 Run `python -m unittest discover -s tests` and confirm the full suite passes.
+- [x] 5.1 Create `tests/test_hindsight_manifest.py` (`unittest.TestCase` + `yaml.safe_load_all`, following `kubernetes/local-embeddings/tests/test_local_embeddings_manifest.py`): image/pull policy, container port 8888, Service ClusterIP/port/selector, `replicas: 1`/`Recreate`, PVC size/class/mode, both secretKeyRefs by exact `{name, key}`, no plaintext secret `value:`, `HINDSIGHT_API_LLM_BASE_URL` targets codex-shim, D-02 security context (`runAsNonRoot`, numeric non-zero `runAsUser`, `fsGroup == runAsUser`), `readOnlyRootFilesystem: true`, `capabilities.drop == ["ALL"]`, `startupProbe.failureThreshold >= 60`, no `kind: Ingress` in `hindsight-*.yaml`.
+- [x] 5.2 In the same file, add the cross-manifest test: `memory-router-deployment.yaml`'s `HINDSIGHT_TOKEN`/`HINDSIGHT_AUTH_MODE` match the Hindsight Deployment's `HINDSIGHT_API_TENANT_API_KEY` secretKeyRef field-by-field, and confirm no `HINDSIGHT_BASE_URL` is present.
+- [x] 5.3 Run `python -m unittest discover -s tests` and confirm the full suite passes.
 
 ## Phase 6: Manual Verification (post-merge, not automated)
 

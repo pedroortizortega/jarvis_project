@@ -156,7 +156,7 @@ falla, o una segunda falla tras el reintento, se propaga como
 
 | Variable | Default |
 |---|---|
-| `HINDSIGHT_BASE_URL` | `http://hindsight.mcps.svc.cluster.local:8080` |
+| `HINDSIGHT_BASE_URL` | `http://hindsight.mcps.svc.cluster.local:8888` |
 | `HINDSIGHT_AUTH_MODE` | `bearer` si hay token, si no `none` |
 | `HINDSIGHT_TOKEN` | `""` |
 | `HINDSIGHT_BANK_PREFIX` | `""` |
@@ -253,10 +253,9 @@ Fase 1. Sin migración de datos — el router sigue sin desplegar.
 - [x] Verificación manual: `Registry().all_backends()` devuelve ambos adaptadores tras reinstalar el paquete
 - [x] `git diff` confirma cero cambios en router core
 - [x] Validación contra instancia real de Hindsight (2026-08-22) — ver §9.1
-- [ ] Despliegue real de una instancia de Hindsight en el clúster —
-  desbloqueado a nivel de namespace (spec 014 §8), pero sigue sin
-  ejecutarse; esta validación corrió contra un container Docker efímero
-  ya destruido, no infraestructura persistente
+- [x] Despliegue real de una instancia de Hindsight en el clúster —
+  ver `specs/022_hindsight_deployment.md` (manifiestos + bootstrap
+  en `kubernetes/mcps/hindsight-*.yaml`)
 
 ---
 

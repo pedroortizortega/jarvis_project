@@ -27,26 +27,26 @@ Note: `specs/022_hindsight_deployment.md` and both OpenSpec delta specs (`opensp
 
 ## Phase 1: Adapter Port Fix (PR 1, strict TDD)
 
-- [ ] 1.1 RED: edit `tests/test_memory_router_hindsight_adapter.py:42` assertion from `:8080` to `:8888`; run `python -m unittest tests.test_memory_router_hindsight_adapter` and confirm it fails.
-- [ ] 1.2 GREEN: in `hermes-native/memory-router/src/memory_router/backends/hindsight.py:110`, change the `HINDSIGHT_BASE_URL` default from `:8080` to `:8888`; re-run the test to confirm it passes.
-- [ ] 1.3 Update `specs/015_hindsight_backend.md` §4 default-port table row to `:8888` and check off the "Despliegue real de una instancia de Hindsight" checklist item, pointing at spec 022.
+- [x] 1.1 RED: edit `tests/test_memory_router_hindsight_adapter.py:42` assertion from `:8080` to `:8888`; run `python -m unittest tests.test_memory_router_hindsight_adapter` and confirm it fails.
+- [x] 1.2 GREEN: in `hermes-native/memory-router/src/memory_router/backends/hindsight.py:110`, change the `HINDSIGHT_BASE_URL` default from `:8080` to `:8888`; re-run the test to confirm it passes.
+- [x] 1.3 Update `specs/015_hindsight_backend.md` §4 default-port table row to `:8888` and check off the "Despliegue real de una instancia de Hindsight" checklist item, pointing at spec 022.
 
 ## Phase 2: Runtime Discovery (PR 1)
 
-- [ ] 2.1 Run `docker inspect -f '{{.Config.User}}' ghcr.io/vectorize-io/hindsight:latest` (or `docker run --rm --entrypoint id ...`) to resolve the real numeric uid/gid per D-02; record the value in `specs/022_hindsight_deployment.md`. If root or non-numeric, stop and flag as a design finding — do not fall back to `runAsNonRoot: false`.
+- [x] 2.1 Run `docker inspect -f '{{.Config.User}}' ghcr.io/vectorize-io/hindsight:latest` (or `docker run --rm --entrypoint id ...`) to resolve the real numeric uid/gid per D-02; record the value in `specs/022_hindsight_deployment.md`. If root or non-numeric, stop and flag as a design finding — do not fall back to `runAsNonRoot: false`.
 
 ## Phase 3: Manifests (PR 1)
 
-- [ ] 3.1 Create `kubernetes/mcps/hindsight-pvc.yaml` — RWO, `local-path`, `10Gi`, name `hindsight-data`, header comment noting D-04 (Postgres + model cache share one PVC).
-- [ ] 3.2 Create `kubernetes/mcps/hindsight-deployment.yaml` — `replicas: 1`, `Recreate`, image + `imagePullPolicy: Always`, D-02 securityContext (discovered uid), D-03 volumes (`home`/`data`/`tmp`), D-11 probes, D-13 `terminationGracePeriodSeconds: 60`, `1`/`2Gi`→`4`/`6Gi`, full env block from design Interfaces section (D-06 LLM model, D-14 onnx embeddings, both secretKeyRefs).
-- [ ] 3.3 Create `kubernetes/mcps/hindsight-service.yaml` — ClusterIP `hindsight`, `8888→8888`, name `http`, selector `app: hindsight`, comment recording the no-Ingress boundary.
-- [ ] 3.4 Modify `kubernetes/mcps/memory-router-deployment.yaml` — add `HINDSIGHT_TOKEN` (secretKeyRef `hindsight-tenant-key`/`tenant-api-key`) and `HINDSIGHT_AUTH_MODE: "bearer"`; do not add `HINDSIGHT_BASE_URL` (D-07).
+- [x] 3.1 Create `kubernetes/mcps/hindsight-pvc.yaml` — RWO, `local-path`, `10Gi`, name `hindsight-data`, header comment noting D-04 (Postgres + model cache share one PVC).
+- [x] 3.2 Create `kubernetes/mcps/hindsight-deployment.yaml` — `replicas: 1`, `Recreate`, image + `imagePullPolicy: Always`, D-02 securityContext (discovered uid), D-03 volumes (`home`/`data`/`tmp`), D-11 probes, D-13 `terminationGracePeriodSeconds: 60`, `1`/`2Gi`→`4`/`6Gi`, full env block from design Interfaces section (D-06 LLM model, D-14 onnx embeddings, both secretKeyRefs).
+- [x] 3.3 Create `kubernetes/mcps/hindsight-service.yaml` — ClusterIP `hindsight`, `8888→8888`, name `http`, selector `app: hindsight`, comment recording the no-Ingress boundary.
+- [x] 3.4 Modify `kubernetes/mcps/memory-router-deployment.yaml` — add `HINDSIGHT_TOKEN` (secretKeyRef `hindsight-tenant-key`/`tenant-api-key`) and `HINDSIGHT_AUTH_MODE: "bearer"`; do not add `HINDSIGHT_BASE_URL` (D-07).
 
 ## Phase 4: Bootstrap (PR 1)
 
-- [ ] 4.1 Modify `kubernetes/mcps/bootstrap/03-create-secrets.sh` — add block 5 (`hindsight-tenant-key`, `openssl rand -hex 32` cached at `$MR_PKI_DIR/hindsight/tenant-api-key`) and block 6 (`hindsight-codex-shim-key`, copy `llms/codex-shim-key[internal-key]` via `kubectl get ... -o jsonpath | base64 -d`, abort loudly if empty); update the closing log line to 6 secrets.
-- [ ] 4.2 Modify `kubernetes/mcps/bootstrap/05-deploy-manifests.sh` — append `hindsight-pvc.yaml`, `hindsight-deployment.yaml`, `hindsight-service.yaml` to the ordered apply list plus a second `rollout status` call.
-- [ ] 4.3 Modify `kubernetes/mcps/bootstrap/00-config.sh` — add `: "${MR_HINDSIGHT_IMAGE:=ghcr.io/vectorize-io/hindsight:latest}"` as a reference value.
+- [x] 4.1 Modify `kubernetes/mcps/bootstrap/03-create-secrets.sh` — add block 5 (`hindsight-tenant-key`, `openssl rand -hex 32` cached at `$MR_PKI_DIR/hindsight/tenant-api-key`) and block 6 (`hindsight-codex-shim-key`, copy `llms/codex-shim-key[internal-key]` via `kubectl get ... -o jsonpath | base64 -d`, abort loudly if empty); update the closing log line to 6 secrets.
+- [x] 4.2 Modify `kubernetes/mcps/bootstrap/05-deploy-manifests.sh` — append `hindsight-pvc.yaml`, `hindsight-deployment.yaml`, `hindsight-service.yaml` to the ordered apply list plus a second `rollout status` call.
+- [x] 4.3 Modify `kubernetes/mcps/bootstrap/00-config.sh` — add `: "${MR_HINDSIGHT_IMAGE:=ghcr.io/vectorize-io/hindsight:latest}"` as a reference value.
 
 ## Phase 5: Manifest Enforcement Tests (PR 2)
 

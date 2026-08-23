@@ -17,6 +17,7 @@ set -euo pipefail
 : "${MR_IMAGE_TAG:=memory-router:local}"
 : "${MR_PKI_DIR:=$HOME/.config/memory-router/pki}"
 : "${MR_IDENTITIES:=pedro-claude-code codex opencode hermes-gateway}"
+: "${MR_HINDSIGHT_IMAGE:=ghcr.io/vectorize-io/hindsight:latest}" # reference only — hindsight-deployment.yaml hardcodes this value directly
 
 # Repo-relative paths — resolved from this script's location so it works
 # regardless of the caller's cwd.

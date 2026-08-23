@@ -87,6 +87,17 @@ spec:
                 secretKeyRef:
                   name: memory-router-client-bearers
                   key: hermes-gateway
+            # hindsight-deployment (SDD change): bearer auth against the
+            # deployed Hindsight instance. No HINDSIGHT_BASE_URL override —
+            # the adapter's fixed default (port 8888) already resolves to
+            # this Service (D-07).
+            - name: HINDSIGHT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hindsight-tenant-key
+                  key: tenant-api-key
+            - name: HINDSIGHT_AUTH_MODE
+              value: "bearer"
           volumeMounts:
             - name: journal
               mountPath: /data

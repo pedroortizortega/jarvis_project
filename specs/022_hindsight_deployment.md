@@ -177,6 +177,30 @@ sigue como default a evaluar primero, no como regla absoluta.
 | Imagen | `ghcr.io/vectorize-io/hindsight:latest`, `imagePullPolicy: Always` (pin de digest es follow-up) |
 | Sizing | requests `1 CPU / 2Gi`, limits `4 CPU / 6Gi` |
 | Red | Solo `ClusterIP`; sin Ingress; sin NetworkPolicy propia (no-op explícito) |
+| UID/GID de runtime (D-02) | Verificado en vivo (no asumido) — ver §4.1 |
+
+### 4.1 UID/GID de runtime verificado (D-02)
+
+`docker inspect -f '{{.Config.User}}' ghcr.io/vectorize-io/hindsight:latest`
+devuelve el `USER` no-numérico de la imagen, `hindsight` — insuficiente
+para `runAsUser`/`runAsGroup`/`fsGroup`, que requieren un valor numérico
+(un `USER` no-numérico con `runAsNonRoot: true` hace que el kubelet
+rechace el contenedor, el mismo bug que documenta
+`memory-router-deployment.yaml:35-37`).
+
+Resuelto ejecutando el contenedor:
+
+```
+$ docker run --rm --entrypoint id ghcr.io/vectorize-io/hindsight:latest
+uid=1000(hindsight) gid=1000(hindsight) groups=1000(hindsight)
+```
+
+**`runAsUser: 1000`, `runAsGroup: 1000`, `fsGroup: 1000`** —
+verificado contra la imagen real (`ghcr.io/vectorize-io/hindsight:latest`,
+digest `sha256:a0e937366261b8a8f20ebcaf13758c689c381dcbbf01684e4375c2787c8c666d`
+al momento de la verificación), no asumido desde la convención `10001` de
+este repo para imágenes propias. Valor aplicado en
+`kubernetes/mcps/hindsight-deployment.yaml`.
 
 ---
 

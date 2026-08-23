@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create the 4 memory-router secrets in $MR_NAMESPACE. None of these are
+# Create the 6 memory-router / hindsight secrets in $MR_NAMESPACE. None of these are
 # ever committed to the repo (kubernetes/mcps/memory-router-*.yaml only
 # references them by name) — this script is the reproducible record of how
 # they were built, not a store of their values.
@@ -67,4 +67,36 @@ kubectl -n "$MR_NAMESPACE" create secret generic memory-router-client-bearers \
   "${BEARER_ARGS[@]}" \
   --dry-run=client -o yaml | apply_secret
 
-log "All 4 secrets applied in namespace $MR_NAMESPACE"
+# 5) hindsight-tenant-key — the shared bearer between memory-router
+# (HINDSIGHT_TOKEN) and the Hindsight pod itself
+# (HINDSIGHT_API_TENANT_API_KEY). Generated once and cached under
+# $MR_PKI_DIR/hindsight/ so re-runs reuse rather than rotate — same shape as
+# the bearers/ loop above (D-10).
+mkdir -p "$MR_PKI_DIR/hindsight"
+HINDSIGHT_TENANT_KEY_FILE="$MR_PKI_DIR/hindsight/tenant-api-key"
+if [ ! -f "$HINDSIGHT_TENANT_KEY_FILE" ]; then
+  openssl rand -hex 32 > "$HINDSIGHT_TENANT_KEY_FILE"
+  chmod 600 "$HINDSIGHT_TENANT_KEY_FILE"
+fi
+log "Creating hindsight-tenant-key"
+kubectl -n "$MR_NAMESPACE" create secret generic hindsight-tenant-key \
+  --from-literal=tenant-api-key="$(cat "$HINDSIGHT_TENANT_KEY_FILE")" \
+  --dry-run=client -o yaml | apply_secret
+
+# 6) hindsight-codex-shim-key — a deliberate mirror of llms/codex-shim-key's
+# `internal-key`, duplicated (never regenerated) into mcps because k8s
+# Secrets are namespace-scoped (design.md D-09/D-10, F-1). Copied from the
+# source of truth on every run so the two copies stay in sync; aborts loudly
+# if the source secret/key is missing rather than creating an empty one.
+HINDSIGHT_CODEX_SHIM_KEY=$(kubectl -n llms get secret codex-shim-key \
+  -o jsonpath='{.data.internal-key}' 2>/dev/null | base64 -d || true)
+if [ -z "$HINDSIGHT_CODEX_SHIM_KEY" ]; then
+  log "No internal-key found on llms/codex-shim-key — aborting"
+  exit 1
+fi
+log "Creating hindsight-codex-shim-key (mirrored from llms/codex-shim-key)"
+kubectl -n "$MR_NAMESPACE" create secret generic hindsight-codex-shim-key \
+  --from-literal=internal-key="$HINDSIGHT_CODEX_SHIM_KEY" \
+  --dry-run=client -o yaml | apply_secret
+
+log "All 6 secrets applied in namespace $MR_NAMESPACE"

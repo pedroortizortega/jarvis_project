@@ -15,6 +15,25 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 source ./00-config.sh
 
+# Staleness guard (specs/022 §8.1 Bug 2): `kubectl apply` only propagates
+# manifest changes — it never rebuilds memory-router:local. If the source
+# has changed since the last successful 01-build-image.sh run, the pod
+# would silently keep running old code. Fail loudly here instead.
+if [ ! -f "$MR_IMAGE_HASH_MARKER" ]; then
+  log "No record of $MR_IMAGE_TAG ever being built (missing $MR_IMAGE_HASH_MARKER)."
+  log "Run ./01-build-image.sh first, then re-run this script."
+  exit 3
+fi
+CURRENT_HASH="$(mr_source_hash)"
+BUILT_HASH="$(cat "$MR_IMAGE_HASH_MARKER")"
+if [ "$CURRENT_HASH" != "$BUILT_HASH" ]; then
+  log "$MR_IMAGE_TAG is STALE: hermes-native/memory-router source has changed"
+  log "since the last successful ./01-build-image.sh run."
+  log "Run ./01-build-image.sh to rebuild + reimport, then re-run this script."
+  exit 3
+fi
+log "$MR_IMAGE_TAG is up to date with the current source (hash $CURRENT_HASH)"
+
 for f in memory-router-pvc.yaml \
          memory-router-configmap.yaml \
          memory-router-deployment.yaml \

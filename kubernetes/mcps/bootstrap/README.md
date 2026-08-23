@@ -38,22 +38,32 @@ non-interactively:
 Both scripts detect the missing step and print the exact command instead
 of hanging — run it yourself, then re-run the script.
 
-## `05-deploy-manifests.sh` does NOT rebuild the image
+## `05-deploy-manifests.sh` does NOT rebuild the image — and now refuses to run on stale code
 
 `kubectl apply` only propagates *manifest* changes (env vars, secrets,
 resources). A *code* change under `hermes-native/memory-router/` has no
 effect in the cluster until you explicitly re-run `01-build-image.sh`
 (rebuild + `docker save | sudo k3s ctr images import -`) **and**
 `kubectl rollout restart deployment/memory-router` — `05-deploy-manifests.sh`
-alone will not detect or trigger this.
+itself cannot trigger a rebuild, it can only detect one is needed.
 
 Found live (2026-08-22, `specs/022_hindsight_deployment.md` §8.1 Bug 2):
 a port-default fix landed and merged in code, `05-deploy-manifests.sh`
 ran clean, but the running pod kept using the pre-fix port for hours
 because nobody rebuilt the image. `deploy-all.sh` does not chain
 `01-build-image.sh` automatically either, precisely because its `sudo`
-step cannot run non-interactively — don't assume a clean `deploy-all.sh`
-run means the code in the pod matches the code in the repo.
+step cannot run non-interactively.
+
+Since then, `01-build-image.sh` records a content hash of
+`hermes-native/memory-router/{src,pyproject.toml,Dockerfile}` at
+`$MR_IMAGE_HASH_MARKER` right after a verified build+import, and
+`05-deploy-manifests.sh` recomputes that hash and **exits 3 before
+applying anything** if it doesn't match — printing the exact command to
+run instead of silently deploying stale code. If you complete the manual
+`sudo` step for `01-build-image.sh` by hand outside the script, re-run
+`./01-build-image.sh` afterward (as its own printed instructions say) so
+the marker actually gets written — running the raw `docker save | sudo …`
+command by itself does not update it.
 
 ## Overriding for a different machine/cluster
 

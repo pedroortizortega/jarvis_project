@@ -17,7 +17,11 @@ set -euo pipefail
 : "${MR_IMAGE_TAG:=memory-router:local}"
 : "${MR_PKI_DIR:=$HOME/.config/memory-router/pki}"
 : "${MR_IDENTITIES:=pedro-claude-code codex opencode hermes-gateway}"
-: "${MR_HINDSIGHT_IMAGE:=ghcr.io/vectorize-io/hindsight:latest}" # reference only — hindsight-deployment.yaml hardcodes this value directly
+# Hindsight image: unlike MR_IMAGE_TAG (consumed by 01-build-image.sh),
+# there is no local build step — the image is pulled straight from
+# ghcr.io/vectorize-io/hindsight:latest, hardcoded in
+# hindsight-deployment.yaml. No env var here on purpose: a var with no
+# consumer would look configurable without being so.
 
 # Repo-relative paths — resolved from this script's location so it works
 # regardless of the caller's cwd.

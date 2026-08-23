@@ -2,14 +2,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from knowledge_vault.search import search_vault
+from knowledge_vault.layout import knowledge_root, pending_root
+from knowledge_vault.search import IndexUnavailable, search_vault
 
 
 def vault_with(root, notes):
     vault = Path(root) / "vault"
-    vault.mkdir(parents=True, exist_ok=True)
+    knowledge_root(vault).mkdir(parents=True, exist_ok=True)
     for name, text in notes.items():
-        (vault / name).write_text(text, encoding="utf-8")
+        (knowledge_root(vault) / name).write_text(text, encoding="utf-8")
     return vault
 
 
@@ -52,7 +53,7 @@ class SearchTests(unittest.TestCase):
             vault = vault_with(root, NOTES)
             index = Path(root) / "index.json"
             search_vault("sqlite", vault, index)
-            (vault / "20260806101500.md").write_text(
+            (knowledge_root(vault) / "20260806101500.md").write_text(
                 "---\ntype: concept\nid: 20260806101500\ntitle: Piper sintetiza voz\n---\n"
                 "# Piper sintetiza voz\n\nPiper genera habla en espanol.\n",
                 encoding="utf-8",
@@ -78,6 +79,33 @@ class SearchTests(unittest.TestCase):
             self.assertTrue(results)
             self.assertIsInstance(results[0].score, float)
             self.assertNotEqual(0.0, results[0].score)
+
+    def test_a_note_in_pending_is_never_returned(self):
+        with tempfile.TemporaryDirectory() as root:
+            vault = vault_with(root, NOTES)
+            pending_root(vault).mkdir(parents=True, exist_ok=True)
+            (pending_root(vault) / "draft.md").write_text(
+                "---\ntype: fact\n---\n# Draft\nstorage class local-path draft.\n",
+                encoding="utf-8",
+            )
+            results = search_vault("storage class local-path", vault, Path(root) / "index.json")
+            self.assertTrue(all(hit.note != "draft.md" for hit in results))
+
+
+class IndexUnavailableTests(unittest.TestCase):
+    """F-4/D-07: a build_index() failure must raise a typed error, never leak OSError."""
+
+    def test_a_read_only_index_directory_raises_index_unavailable(self):
+        with tempfile.TemporaryDirectory() as root:
+            vault = vault_with(root, NOTES)
+            index_dir = Path(root) / "state"
+            index_dir.mkdir()
+            index_dir.chmod(0o500)
+            try:
+                with self.assertRaises(IndexUnavailable):
+                    search_vault("sqlite", vault, index_dir / "index.json")
+            finally:
+                index_dir.chmod(0o700)
 
 
 if __name__ == "__main__":

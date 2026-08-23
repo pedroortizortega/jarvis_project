@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .search import search_vault
+from .search import IndexUnavailable, search_vault
 
 DEFAULT_HOST = "10.42.0.1"
 DEFAULT_PORT = 8088
@@ -145,6 +145,9 @@ def make_handler(searcher, token, limit_max):
                 hits = searcher.search(query, limit)
             except TimeoutError:
                 self._respond(503, {"error": "index_rebuild_timeout"})
+                return
+            except IndexUnavailable:
+                self._respond(503, {"error": "index_unavailable"})
                 return
             self._respond(
                 200,

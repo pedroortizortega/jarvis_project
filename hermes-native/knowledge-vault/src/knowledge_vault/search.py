@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .layout import published_notes
 from .note import parse_frontmatter
 from .retrieval import Retriever, build_index
 
@@ -18,6 +19,10 @@ EXCERPT = 200
 # ("en", "de") is enough to match, and the agent would link a note to something
 # it has nothing to do with.
 MIN_RELEVANCE = 0.5
+
+
+class IndexUnavailable(Exception):
+    """The index could not be (re)built — never leak the raw OSError (D-07)."""
 
 
 @dataclass(frozen=True)
@@ -36,12 +41,15 @@ def search_vault(query, vault_directory, index_path, limit=5):
     honest answer is a fresh index rather than "unavailable".
     """
     vault, index_path = Path(vault_directory), Path(index_path)
-    if not any(vault.glob("*.md")):
+    if not any(published_notes(vault)):
         return []
     retriever = Retriever(vault, index_path)
     result = retriever.search(query, limit=limit)
     if not result.available:
-        build_index(vault, index_path)
+        try:
+            build_index(vault, index_path)
+        except OSError as error:
+            raise IndexUnavailable(str(error)) from error
         result = Retriever(vault, index_path).search(query, limit=limit)
     if not result.available:
         return []
@@ -77,7 +85,7 @@ def main():
             os.environ["KNOWLEDGE_VAULT_DIR"],
             os.environ["KNOWLEDGE_VAULT_INDEX"],
         )
-    except (KeyError, OSError) as error:
+    except (KeyError, OSError, IndexUnavailable) as error:
         print(f"knowledge-vault search: {error}", file=sys.stderr)
         return 1
     if not hits:

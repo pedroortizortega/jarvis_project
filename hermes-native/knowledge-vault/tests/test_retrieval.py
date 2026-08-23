@@ -4,15 +4,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from knowledge_vault import retrieval
+from knowledge_vault.layout import knowledge_root, pending_root
 
-from knowledge_vault.retrieval import Retriever, build_index
+from knowledge_vault.retrieval import Retriever, build_index, vault_revision
 
 
 def vault_with(root, notes):
+    """Build a vault tree with a `knowledge/` root holding `notes`."""
     vault = Path(root) / "vault"
-    vault.mkdir(parents=True, exist_ok=True)
+    knowledge_root(vault).mkdir(parents=True, exist_ok=True)
     for name, text in notes.items():
-        (vault / name).write_text(text, encoding="utf-8")
+        (knowledge_root(vault) / name).write_text(text, encoding="utf-8")
     return vault
 
 
@@ -40,7 +42,7 @@ class RetrievalTests(unittest.TestCase):
             result = retriever.search("k3s cluster")
             self.assertTrue(result.available)
             hit = result.hits[0]
-            self.assertEqual(str(vault / "kubernetes.md"), hit.note_path)
+            self.assertEqual(str(knowledge_root(vault) / "kubernetes.md"), hit.note_path)
             self.assertTrue(hit.fragment_id.startswith("kubernetes-"))
             self.assertIn("k3s", hit.text)
             rebuilt_path = Path(root) / "state" / "rebuilt.json"
@@ -51,18 +53,33 @@ class RetrievalTests(unittest.TestCase):
     def test_content_outside_the_published_vault_is_never_returned(self):
         with tempfile.TemporaryDirectory() as root:
             retriever, vault = self.retriever(root)
-            pending = vault.parent / "pending"
-            pending.mkdir()
+            pending = pending_root(vault)
+            pending.mkdir(parents=True, exist_ok=True)
             (pending / "draft.md").write_text("# Kubernetes\nSecret k3s draft.\n", encoding="utf-8")
             result = retriever.search("k3s")
             self.assertTrue(result.available)
             self.assertTrue(all("draft" not in hit.text for hit in result.hits))
             self.assertTrue(all(str(pending) not in hit.note_path for hit in result.hits))
 
+    def test_a_note_in_pending_never_changes_the_vault_revision(self):
+        """F-1, the load-bearing scoping test (design.md Testing Strategy)."""
+        with tempfile.TemporaryDirectory() as root:
+            retriever, vault = self.retriever(root)
+            before = vault_revision(vault)
+            pending = pending_root(vault)
+            pending.mkdir(parents=True, exist_ok=True)
+            (pending / "draft.md").write_text(
+                "---\ntype: fact\n---\n# Draft\nUnapproved k3s draft.\n", encoding="utf-8"
+            )
+            after = vault_revision(vault)
+            self.assertEqual(before, after)
+            result = retriever.search("draft")
+            self.assertTrue(all("draft.md" not in hit.note_path for hit in result.hits))
+
     def test_stale_index_reports_unavailable_instead_of_stale_hits(self):
         with tempfile.TemporaryDirectory() as root:
             retriever, vault = self.retriever(root)
-            (vault / "kubernetes.md").write_text("# Kubernetes\nRewritten.\n", encoding="utf-8")
+            (knowledge_root(vault) / "kubernetes.md").write_text("# Kubernetes\nRewritten.\n", encoding="utf-8")
             result = retriever.search("k3s cluster")
             self.assertFalse(result.available)
             self.assertEqual((), result.hits)
@@ -84,7 +101,7 @@ class RetrievalTests(unittest.TestCase):
             ) as digest:
                 retriever.search("k3s")
                 self.assertEqual(0, digest.call_count, "unchanged notes were re-read")
-                (vault / "voice.md").write_text("# Voice\nRewritten.\n", encoding="utf-8")
+                (knowledge_root(vault) / "voice.md").write_text("# Voice\nRewritten.\n", encoding="utf-8")
                 self.assertFalse(retriever.search("k3s").available)
                 self.assertGreater(digest.call_count, 0)
 
@@ -99,7 +116,7 @@ class RetrievalTests(unittest.TestCase):
             hybrid = Retriever(vault, Path(root) / "state" / "index.json", embedder=embedder)
             result = hybrid.search("habla")
             self.assertTrue(result.available)
-            self.assertEqual(str(vault / "voice.md"), result.hits[0].note_path)
+            self.assertEqual(str(knowledge_root(vault) / "voice.md"), result.hits[0].note_path)
 
 
 if __name__ == "__main__":

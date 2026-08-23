@@ -28,17 +28,17 @@ Chain strategy: pending
 
 ## Phase 1: Scoped search/index root (PR 1, load-bearing — must land first, alone)
 
-- [ ] 1.1 Create `layout.py`: `KNOWLEDGE_DIRNAME`/`PENDING_DIRNAME`, `knowledge_root()`, `pending_root()`, `published_notes()`, `vault_lock()`.
-- [ ] 1.2 RED `test_layout.py`: `quarantine-2026` fixture folder never appears in index/search (allowlist, behavioral).
-- [ ] 1.3 RED `test_layout.py`: `retrieval.py`/`search.py` source has no `"pending"` literal via `inspect.getsource` (allowlist, structural).
-- [ ] 1.4 RED `test_retrieval.py`: note in `pending/` never changes `vault_revision()`, never a hit (F-1).
-- [ ] 1.5 GREEN `retrieval.py`: `_signature()`/`vault_revision()`/`build_index()` use `published_notes(vault)`.
-- [ ] 1.6 GREEN `search.py`: empty-vault guard uses `published_notes()` (F-2).
-- [ ] 1.7 Add `IndexUnavailable`; `build_index()` failure raises it instead of leaking `OSError` (D-07).
-- [ ] 1.8 GREEN `serve.py`: map `IndexUnavailable` → `503 {"error":"index_unavailable"}`.
-- [ ] 1.9 RED `test_search.py`/`test_serve.py`: read-only index dir (`chmod 0500`) → `IndexUnavailable`/503 (F-4).
-- [ ] 1.10 Update `test_retrieval/search/serve.py` fixtures to add `knowledge/` root.
-- [ ] 1.11 Run Unit 1 focused command; confirm PR 1 green in isolation.
+- [x] 1.1 Create `layout.py`: `KNOWLEDGE_DIRNAME`/`PENDING_DIRNAME`, `knowledge_root()`, `pending_root()`, `published_notes()`, `vault_lock()`.
+- [x] 1.2 RED `test_layout.py`: `quarantine-2026` fixture folder never appears in index/search (allowlist, behavioral).
+- [x] 1.3 RED `test_layout.py`: `retrieval.py`/`search.py` source has no `"pending"` literal via `inspect.getsource` (allowlist, structural).
+- [x] 1.4 RED `test_retrieval.py`: note in `pending/` never changes `vault_revision()`, never a hit (F-1).
+- [x] 1.5 GREEN `retrieval.py`: `_signature()`/`vault_revision()`/`build_index()` use `published_notes(vault)`.
+- [x] 1.6 GREEN `search.py`: empty-vault guard uses `published_notes()` (F-2).
+- [x] 1.7 Add `IndexUnavailable`; `build_index()` failure raises it instead of leaking `OSError` (D-07).
+- [x] 1.8 GREEN `serve.py`: map `IndexUnavailable` → `503 {"error":"index_unavailable"}`.
+- [x] 1.9 RED `test_search.py`/`test_serve.py`: read-only index dir (`chmod 0500`) → `IndexUnavailable`/503 (F-4).
+- [x] 1.10 Update `test_retrieval/search/serve.py` fixtures to add `knowledge/` root.
+- [x] 1.11 Run Unit 1 focused command; confirm PR 1 green in isolation.
 
 ## Phase 2: Lifecycle — propose/decide into `pending/` (PR 2)
 

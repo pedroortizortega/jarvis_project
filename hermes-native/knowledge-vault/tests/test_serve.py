@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from knowledge_vault import serve
+from knowledge_vault.layout import knowledge_root
 
 NOTE = (
     "---\ntype: infra-fact\nid: 1\ntitle: Longhorn no esta instalado\n---\n"
@@ -16,9 +17,9 @@ NOTE = (
 
 def vault_with(root, notes):
     vault = Path(root) / "vault"
-    vault.mkdir(parents=True, exist_ok=True)
+    knowledge_root(vault).mkdir(parents=True, exist_ok=True)
     for name, text in notes.items():
-        (vault / name).write_text(text, encoding="utf-8")
+        (knowledge_root(vault) / name).write_text(text, encoding="utf-8")
     return vault
 
 
@@ -297,18 +298,57 @@ class ReadOnlyTests(ServeTestCase):
             "/search", {"query": "storage", "limit": 5}, token=self.token
         )
         self.assertEqual(200, status)
-        note_before = (self.vault_dir / "note.md").stat().st_mtime_ns
+        note_before = (knowledge_root(self.vault_dir) / "note.md").stat().st_mtime_ns
         index_before = self.index_path.stat().st_mtime_ns
 
         status, _ = self._post(
             "/search", {"query": "storage", "limit": 5}, token=self.token
         )
         self.assertEqual(200, status)
-        note_after = (self.vault_dir / "note.md").stat().st_mtime_ns
+        note_after = (knowledge_root(self.vault_dir) / "note.md").stat().st_mtime_ns
         index_after = self.index_path.stat().st_mtime_ns
 
         self.assertEqual(note_before, note_after)
         self.assertEqual(index_before, index_after)
+
+
+class IndexUnavailableTests(unittest.TestCase):
+    """D-07: search_vault() raising IndexUnavailable maps to a 503, not a 500."""
+
+    def setUp(self):
+        self._original = serve.search_vault
+
+    def tearDown(self):
+        serve.search_vault = self._original
+
+    def test_index_unavailable_maps_to_503(self):
+        def unavailable(*args, **kwargs):
+            raise serve.IndexUnavailable("index is unavailable")
+
+        serve.search_vault = unavailable
+        searcher = serve.SingleFlightSearcher("v", "i", timeout_seconds=5)
+        handler_class = serve.make_handler(searcher, "tok", 20)
+        server = serve.build_http_server(handler_class, host="127.0.0.1", port=0)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", port)
+            connection.request(
+                "POST",
+                "/search",
+                body=json.dumps({"query": "x", "limit": 5}).encode("utf-8"),
+                headers={"Authorization": "Bearer tok"},
+            )
+            response = connection.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+        self.assertEqual(503, response.status)
+        self.assertEqual("index_unavailable", payload["error"])
 
 
 class SecretHandlingTests(ServeTestCase):

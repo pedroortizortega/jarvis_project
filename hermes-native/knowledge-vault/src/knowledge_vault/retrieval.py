@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .atomic import write_atomic
+from .layout import published_notes
 from .note import body_of
 from .models import RetrievalHit, RetrievalResult
 
@@ -26,7 +27,7 @@ def _signature(vault):
     return tuple(
         sorted(
             (str(path.relative_to(vault)), path.stat().st_mtime_ns, path.stat().st_size)
-            for path in vault.rglob("*.md")
+            for path in published_notes(vault)
         )
     )
 
@@ -46,7 +47,7 @@ def vault_revision(vault_directory, cache=None):
         return cache["revision"]
     entries = sorted(
         f"{path.relative_to(vault)}:{_digest(path.read_text(encoding='utf-8'))}"
-        for path in vault.rglob("*.md")
+        for path in published_notes(vault)
     )
     revision = _digest("\n".join(entries))
     if cache is not None:
@@ -89,7 +90,9 @@ def build_index(vault_directory, index_path):
     vault = Path(vault_directory)
     index = {
         "revision": vault_revision(vault),
-        "fragments": [fragment for path in sorted(vault.rglob("*.md")) for fragment in _fragments(path)],
+        "fragments": [
+            fragment for path in sorted(published_notes(vault)) for fragment in _fragments(path)
+        ],
     }
     index_path = Path(index_path)
     index_path.parent.mkdir(parents=True, exist_ok=True)

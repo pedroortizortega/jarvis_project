@@ -42,15 +42,15 @@ Chain strategy: pending
 
 ## Phase 2: Lifecycle — propose/decide into `pending/` (PR 2)
 
-- [ ] 2.1 RED `test_propose.py`: `propose()` writes only under `pending/`; no param retargets `knowledge/`.
-- [ ] 2.2 GREEN `propose.py`: render OKF, mint id vs `published_notes() ∪ pending/*.md`, write `pending/<id>.md` with empty review fields + `idempotency_key` (F-7/D-10).
-- [ ] 2.3 `decide.py`: derive path from `pending_root(KNOWLEDGE_VAULT_DIR)`; logic unchanged.
-- [ ] 2.4 `review.py`: keep only `PENDING_FIELDS`, `_reviewed_note()`, `_render()`; delete `PendingProjector`/`DecisionImporter`/`run_review`/`main`.
-- [ ] 2.5 Delete `publisher.py` (move `new_note_id()` to `note.py`), delete `outbox.py`.
-- [ ] 2.6 `models.py`: drop `Proposal`/`Decision`/`ApprovedRecord`; keep `RetrievalHit`/`RetrievalResult`/`PublicationFailure`.
-- [ ] 2.7 RED `test_propose.py`: id collision checked against `knowledge/** ∪ pending/*`.
-- [ ] 2.8 Delete `test_publisher.py`/`test_review_run.py`/`test_outbox.py`; update `test_decide/pending_list/note.py` fixtures.
-- [ ] 2.9 Run Unit 2 focused command.
+- [x] 2.1 RED `test_propose.py`: `propose()` writes only under `pending/`; no param retargets `knowledge/`.
+- [x] 2.2 GREEN `propose.py`: render OKF, mint id vs `published_notes() ∪ pending/*.md`, write `pending/<id>.md` with empty review fields + `idempotency_key` (F-7/D-10).
+- [x] 2.3 `decide.py`: derive path from `pending_root(KNOWLEDGE_VAULT_DIR)`; logic unchanged.
+- [x] 2.4 `review.py`: keep only `PENDING_FIELDS`, `_reviewed_note()`, `_render()`; delete `PendingProjector`/`DecisionImporter`/`run_review`/`main`.
+- [x] 2.5 Delete `publisher.py` (move `new_note_id()` to `note.py`), delete `outbox.py`.
+- [x] 2.6 `models.py`: drop `Proposal`/`Decision`/`ApprovedRecord`; keep `RetrievalHit`/`RetrievalResult`/`PublicationFailure`.
+- [x] 2.7 RED `test_propose.py`: id collision checked against `knowledge/** ∪ pending/*`.
+- [x] 2.8 Delete `test_publisher.py`/`test_review_run.py`/`test_outbox.py`; update `test_decide/pending_list/note.py` fixtures.
+- [x] 2.9 Run Unit 2 focused command.
 
 ## Phase 3: Promote + sync (PR 3)
 

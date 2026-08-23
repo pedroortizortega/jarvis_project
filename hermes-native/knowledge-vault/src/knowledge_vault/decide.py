@@ -13,6 +13,7 @@ from pathlib import Path
 
 from dataclasses import dataclass
 
+from . import layout
 from .atomic import write_atomic
 from .note import body_of, parse_frontmatter, title_of
 
@@ -79,7 +80,8 @@ def decide(proposal_id, decision, rationale, pending_directory, reviewer=None, s
 
 def list_main():
     try:
-        waiting = awaiting_decision(os.environ["KNOWLEDGE_VAULT_PENDING_DIR"])
+        pending = layout.pending_root(os.environ["KNOWLEDGE_VAULT_DIR"])
+        waiting = awaiting_decision(pending)
     except (KeyError, OSError) as error:
         print(f"knowledge-vault pending: {error}", file=sys.stderr)
         return 1
@@ -109,7 +111,7 @@ def main():
             sys.argv[1],
             sys.argv[2],
             sys.stdin.read(),
-            os.environ["KNOWLEDGE_VAULT_PENDING_DIR"],
+            layout.pending_root(os.environ["KNOWLEDGE_VAULT_DIR"]),
             reviewer=os.environ.get("KNOWLEDGE_VAULT_REVIEWER"),
             source=os.environ.get("KNOWLEDGE_VAULT_DECISION_SOURCE"),
         )

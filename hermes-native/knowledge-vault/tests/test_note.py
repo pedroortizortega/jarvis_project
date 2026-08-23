@@ -3,6 +3,7 @@ import unittest
 from knowledge_vault.note import (
     MissingType,
     body_of,
+    new_note_id,
     parse_frontmatter,
     render,
     title_of,
@@ -65,6 +66,30 @@ class FrontmatterTests(unittest.TestCase):
             note_id="20260804223000",
         )
         self.assertEqual("Storage: solo local-path", parse_frontmatter(rendered)["title"])
+
+
+class NewNoteIdTests(unittest.TestCase):
+    """Zettelkasten identity: the file name is an id that never changes, so a
+    link written today still resolves after the note is retitled."""
+
+    def test_it_mints_a_fourteen_digit_timestamp(self):
+        self.assertRegex(new_note_id(set()), r"^\d{14}$")
+
+    def test_a_taken_second_is_never_reused(self):
+        import re
+
+        first = new_note_id(set())
+        second = new_note_id({first})
+        self.assertNotEqual(first, second)
+        self.assertRegex(second, r"^\d{14}$")
+
+    def test_it_skips_every_taken_second_in_sequence(self):
+        first = new_note_id(set())
+        taken = {first}
+        second = new_note_id(taken)
+        taken.add(second)
+        third = new_note_id(taken)
+        self.assertEqual(3, len({first, second, third}))
 
 
 if __name__ == "__main__":

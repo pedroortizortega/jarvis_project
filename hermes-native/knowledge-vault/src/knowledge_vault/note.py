@@ -10,9 +10,23 @@ and inline lists — so the package keeps no dependencies.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 
 HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
 FIELD_ORDER = ("type", "id", "title", "description", "aliases", "tags", "timestamp")
+
+
+def new_note_id(taken):
+    """A Zettelkasten id: the second the note was created, made unique.
+
+    The id is the file name and every link is built from it, so it must never
+    change. Two notes born in the same second would collide, so the later one
+    borrows the next free second.
+    """
+    stamp = datetime.now(timezone.utc)
+    while stamp.strftime("%Y%m%d%H%M%S") in taken:
+        stamp += timedelta(seconds=1)
+    return stamp.strftime("%Y%m%d%H%M%S")
 
 
 class MissingType(ValueError):

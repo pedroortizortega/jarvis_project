@@ -107,7 +107,7 @@ class HindsightBackend:
         self._base_url = _env_default(
             base_url,
             "HINDSIGHT_BASE_URL",
-            "http://hindsight.mcps.svc.cluster.local:8080",
+            "http://hindsight.mcps.svc.cluster.local:8888",
         )
         self._token = _env_default(token, "HINDSIGHT_TOKEN", "")
 

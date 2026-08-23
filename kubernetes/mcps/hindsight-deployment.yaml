@@ -1,0 +1,147 @@
+# hindsight — SDD change: hindsight-deployment (PR 1)
+# Single-pod, single-Deployment, Recreate strategy: embedded Postgres on an
+# RWO PVC cannot tolerate two writers (design.md "Approach").
+#
+# D-02 — runtime UID/GID verified live, not assumed:
+#   `docker inspect -f '{{.Config.User}}' ghcr.io/vectorize-io/hindsight:latest`
+#   returns the non-numeric image USER "hindsight"; resolved to the numeric
+#   uid/gid via `docker run --rm --entrypoint id ghcr.io/vectorize-io/hindsight:latest`
+#   -> uid=1000(hindsight) gid=1000(hindsight). Recorded here and in
+#   specs/022_hindsight_deployment.md.
+#
+# D-03 — readOnlyRootFilesystem: true, kept. Writable home emptyDir plus the
+# PVC nested inside it at two subPaths, plus a /tmp emptyDir. HOME set
+# explicitly so stray writes land on a writable path, not the read-only root.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hindsight
+  namespace: mcps
+  labels:
+    app: hindsight
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hindsight
+  template:
+    metadata:
+      labels:
+        app: hindsight
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # D-13: embedded Postgres needs a clean shutdown to avoid corruption;
+      # doubled from the 30s sibling default, cheap and only costs time on
+      # delete.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hindsight
+          image: ghcr.io/vectorize-io/hindsight:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 8888
+              name: http
+          env:
+            - name: HINDSIGHT_API_HOST
+              value: "0.0.0.0"
+            - name: HINDSIGHT_API_PORT
+              value: "8888"
+            # D-03: writable home for stray .config/lock/socket writes.
+            - name: HOME
+              value: "/home/hindsight"
+            # D-06/F-2/F-3: codex-shim ignores the request's `model` field
+            # and always sends CODEX_CLOUD_MODEL upstream; gpt-5.6-sol
+            # matches codex-shim's own /v1/models id, so it is the honest,
+            # self-documenting value even though it is not load-bearing.
+            - name: HINDSIGHT_API_LLM_PROVIDER
+              value: "openai"
+            - name: HINDSIGHT_API_LLM_MODEL
+              value: "gpt-5.6-sol"
+            - name: HINDSIGHT_API_LLM_BASE_URL
+              value: "http://codex-shim.llms.svc.cluster.local:8080/v1"
+            - name: HINDSIGHT_API_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hindsight-codex-shim-key
+                  key: internal-key
+            - name: HINDSIGHT_API_TENANT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hindsight-tenant-key
+                  key: tenant-api-key
+            # D-14/F-8: bundled onnx provider, multilingual, with native
+            # query:/passage: prefixing inside Hindsight itself — dominates
+            # both the English-only bundled `local` default and routing
+            # through local-embeddings' unprefixed OpenAI-shaped endpoint.
+            - name: HINDSIGHT_API_EMBEDDINGS_PROVIDER
+              value: "onnx"
+            - name: HINDSIGHT_API_EMBEDDINGS_ONNX_MODEL_ID
+              value: "intfloat/multilingual-e5-small"
+          volumeMounts:
+            - name: home
+              mountPath: /home/hindsight
+            - name: data
+              mountPath: /home/hindsight/.pg0
+              subPath: pg
+            - name: data
+              mountPath: /home/hindsight/.cache
+              subPath: cache
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          # D-11: two serial cold-start costs — embedded Postgres initdb and
+          # a first-run download of the embedding + reranker models over the
+          # network — a strictly worse worst case than local-embeddings'
+          # baked-in model. ~10 min budget, generous on purpose; cached on
+          # the PVC thereafter so it is a one-time cost (D-04).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+      volumes:
+        - name: home
+          emptyDir: {}
+        - name: data
+          persistentVolumeClaim:
+            claimName: hindsight-data
+        - name: tmp
+          emptyDir: {}

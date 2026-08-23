@@ -39,7 +39,7 @@ class HindsightAdapterConfigTests(unittest.TestCase):
         try:
             backend = HindsightBackend()
             self.assertEqual(
-                "http://hindsight.mcps.svc.cluster.local:8080", backend._base_url
+                "http://hindsight.mcps.svc.cluster.local:8888", backend._base_url
             )
             self.assertEqual("none", backend._auth_mode)
             self.assertEqual("", backend._token)

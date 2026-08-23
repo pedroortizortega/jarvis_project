@@ -1,0 +1,18 @@
+# hindsight — SDD change: hindsight-deployment (PR 1)
+# Single PVC, two subPaths (D-04): embedded Postgres data under `.pg0` and
+# the HF/onnx model cache under `.cache`, so a pod restart never repeats the
+# first-run model download and Postgres data survives reschedules.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hindsight-data
+  namespace: mcps
+  labels:
+    app: hindsight
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi

@@ -18,7 +18,7 @@ The Hindsight Service MUST be reachable inside the cluster at `hindsight.mcps.sv
 
 ### Requirement: Bearer Authentication Enforced
 
-The deployed Hindsight instance MUST require a bearer token (`HINDSIGHT_API_TENANT_API_KEY`) for API access. A request without a token, or with an incorrect token, MUST be rejected. The equivalent request carrying the correct tenant bearer token MUST succeed.
+The deployed Hindsight instance MUST require a bearer token for API access, via **both** `HINDSIGHT_API_TENANT_EXTENSION=hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension` (activates enforcement) and `HINDSIGHT_API_TENANT_API_KEY` (the shared secret checked). Setting the key alone, without the extension, has no effect — confirmed via live validation (specs/022 §8.1), where an unauthenticated write succeeded with only the key set. A request without a token, or with an incorrect token, MUST be rejected. The equivalent request carrying the correct tenant bearer token MUST succeed.
 
 #### Scenario: Unauthenticated request is rejected
 

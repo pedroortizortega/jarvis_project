@@ -268,9 +268,60 @@ son datos nuevos, no una migración de datos existentes.
 - [x] Tradeoff de dimensión de embedding documentado explícitamente (§3)
 - [x] Invariantes de runtime (auth, persistencia, LLM, embeddings, red)
 - [x] Conflicto de convención de testing verificado y resuelto (§5)
-- [ ] Diseño (`sdd-design`)
-- [ ] Tareas (`sdd-tasks`)
-- [ ] Implementación (`sdd-apply`)
+- [x] Diseño (`sdd-design`) — `openspec/changes/hindsight-deployment/design.md`
+- [x] Tareas (`sdd-tasks`) — `openspec/changes/hindsight-deployment/tasks.md`
+- [x] Implementación (`sdd-apply`) — PR #56, PR #57
+- [ ] Aplicado en `trantor` y validado en vivo contra el clúster real (§8.1) — el bug de auth encontrado ahí sigue sin re-verificar tras su fix
+
+---
+
+## 8.1 Validación contra el clúster real (2026-08-22)
+
+Aplicado en `trantor` (`kubectl apply` vía `bootstrap/03-create-secrets.sh` +
+`05-deploy-manifests.sh`). Resultado, punto por punto contra los criterios
+de éxito de `proposal.md`:
+
+- [x] Pod `hindsight` `Running` 1/1, `hindsight-data` PVC `Bound` (`10Gi`,
+  `local-path`). D-03 (`readOnlyRootFilesystem: true`) sobrevivió el primer
+  arranque sin CrashLoop — riesgo de diseño resuelto, no solo diseñado.
+- [x] `GET /health` responde `200` `{"status":"healthy","database":"connected",...}`
+  in-cluster, **sin** requerir auth — D-12 resuelto: el tenant key no
+  bloquea los probes.
+- [x] Pod `memory-router` reconectó sano tras el rollout conjunto.
+- [ ] ~~Un request sin auth es rechazado~~ — **BUG real encontrado**, ver
+  abajo. Corregido en este mismo change antes de cerrar el checklist.
+
+### Bug encontrado: `HINDSIGHT_API_TENANT_API_KEY` sola no activa nada
+
+`PUT /v1/default/banks/{id}` **sin** header `Authorization` devolvió `200`
+y creó el bank, con `HINDSIGHT_API_TENANT_API_KEY` correctamente seteada
+en el pod (confirmado leyendo el env real del container, no asumido). El
+proposal y este spec (§2, ítem 4) asumían que setear el tenant key
+alcanzaba para activar el auth bearer — asunción incorrecta, no verificada
+contra la doc real de Hindsight hasta este punto.
+
+Causa raíz (`hindsight-docs/docs/developer/configuration.md`,
+`github.com/vectorize-io/hindsight`): hacen falta **dos** variables, no
+una. `HINDSIGHT_API_TENANT_API_KEY` es solo el secreto compartido contra
+el que se valida — quien realmente **activa** la comprobación es
+`HINDSIGHT_API_TENANT_EXTENSION=hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension`.
+Sin esa segunda variable, el key queda cargado en memoria pero sin ningún
+efecto — ninguna ruta lo consulta.
+
+**Fix**: agregar `HINDSIGHT_API_TENANT_EXTENSION` al env block de
+`hindsight-deployment.yaml`, con un test de manifiesto nuevo
+(`test_tenant_auth_extension_enabled`) que falla si falta. **Pendiente al
+momento de este commit**: re-desplegar en `trantor` y re-verificar en vivo
+(request sin token → `401` esperado; mismo request con el bearer real →
+`200` esperado) — se hace después de mergear este PR, y este párrafo se
+actualiza con el resultado real una vez confirmado. Ver PR
+`fix/hindsight-tenant-auth-extension`.
+
+**Lección**: la doc pública de Hindsight documenta claramente el patrón de
+dos variables — el proposal/spec original solo miró una. Confirma, otra
+vez, que "el config existe y parece razonable" no reemplaza probarlo
+contra el servicio real antes de dar por cerrado un criterio de éxito de
+seguridad.
 
 ---
 

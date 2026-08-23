@@ -270,8 +270,8 @@ son datos nuevos, no una migración de datos existentes.
 - [x] Conflicto de convención de testing verificado y resuelto (§5)
 - [x] Diseño (`sdd-design`) — `openspec/changes/hindsight-deployment/design.md`
 - [x] Tareas (`sdd-tasks`) — `openspec/changes/hindsight-deployment/tasks.md`
-- [x] Implementación (`sdd-apply`) — PR #56, PR #57
-- [ ] Aplicado en `trantor` y validado en vivo contra el clúster real (§8.1) — el bug de auth encontrado ahí sigue sin re-verificar tras su fix
+- [x] Implementación (`sdd-apply`) — PR #56, PR #57, PR #58 (fix de auth)
+- [x] Aplicado en `trantor` y validado en vivo contra el clúster real (§8.1) — todos los criterios de éxito de `proposal.md` confirmados
 
 ---
 
@@ -288,10 +288,25 @@ de éxito de `proposal.md`:
   in-cluster, **sin** requerir auth — D-12 resuelto: el tenant key no
   bloquea los probes.
 - [x] Pod `memory-router` reconectó sano tras el rollout conjunto.
-- [ ] ~~Un request sin auth es rechazado~~ — **BUG real encontrado**, ver
-  abajo. Corregido en este mismo change antes de cerrar el checklist.
+- [x] Un request sin auth es rechazado (`401`), el mismo request con el
+  bearer real es aceptado (`200`) — re-verificado tras el fix de PR #58,
+  ver debajo.
+- [x] `memory-router` `store` a `/projects/hindsight-verify` llega a
+  Hindsight y devuelve `{"status":"committed","backend":"hindsight"}` — no
+  degradado a la cola.
+- [x] `search` subsiguiente devuelve el hecho guardado con
+  `"backend":"hindsight"`, reformulado por extracción LLM real y con
+  **recall multilingüe funcionando** (query y contenido en español,
+  D-14 confirmado en producción, no solo en config).
+- [x] Borrar el pod (`kubectl delete pod -l app=hindsight`) y esperar el
+  reschedule preserva la memoria — recall idéntico post-restart contra la
+  misma PVC.
+- [x] Las llamadas LLM de Hindsight resuelven vía `codex-shim` — confirmado
+  en los logs de `codex-shim` (`POST /v1/chat/completions 200`, origen
+  `10.42.0.169`, verificado que esa IP es exactamente la del pod
+  `hindsight`, no asumido).
 
-### Bug encontrado: `HINDSIGHT_API_TENANT_API_KEY` sola no activa nada
+### Bug 1 encontrado: `HINDSIGHT_API_TENANT_API_KEY` sola no activa nada
 
 `PUT /v1/default/banks/{id}` **sin** header `Authorization` devolvió `200`
 y creó el bank, con `HINDSIGHT_API_TENANT_API_KEY` correctamente seteada
@@ -310,12 +325,52 @@ efecto — ninguna ruta lo consulta.
 
 **Fix**: agregar `HINDSIGHT_API_TENANT_EXTENSION` al env block de
 `hindsight-deployment.yaml`, con un test de manifiesto nuevo
-(`test_tenant_auth_extension_enabled`) que falla si falta. **Pendiente al
-momento de este commit**: re-desplegar en `trantor` y re-verificar en vivo
-(request sin token → `401` esperado; mismo request con el bearer real →
-`200` esperado) — se hace después de mergear este PR, y este párrafo se
-actualiza con el resultado real una vez confirmado. Ver PR
-`fix/hindsight-tenant-auth-extension`.
+(`test_tenant_auth_extension_enabled`) que falla si falta. Ver PR #58.
+
+**Re-verificado en vivo tras el fix** (`kubectl apply` +
+`rollout status`): request sin token → `401`
+`{"detail":"Authentication failed: Invalid API key"}`; mismo request con
+el bearer real → `200`, bank creado. Confirmado — no solo mergeado.
+
+### Bug 2 encontrado: la imagen de `memory-router` en el clúster estaba
+desactualizada respecto del código del repo
+
+El primer intento de round-trip real (`store`/`search` vía
+`memory-router`) mostró a Hindsight como `unavailable` con
+`<urlopen error timed out>`, pese a que llamadas directas a Hindsight
+funcionaban en milisegundos. Diagnóstico paso a paso (no asumido):
+conectividad in-cluster desde el pod de `memory-router` hacia Hindsight
+era instantánea (`/health` en 6.7ms); el bug estaba en el propio
+adaptador. Ejecutando `HindsightBackend()` dentro del pod real se
+confirmó: `base_url` resolvía a **`:8080`**, el puerto viejo — pese a que
+el fix de puerto de PR #56 ya estaba mergeado en el código fuente del
+repo.
+
+Causa raíz: el bootstrap (`05-deploy-manifests.sh`) solo hace
+`kubectl apply` sobre manifiestos — **nunca reconstruye la imagen
+Docker**. El pod de `memory-router` seguía corriendo la imagen
+`memory-router:local` construida antes de que el fix de puerto existiera;
+nadie volvió a correr `01-build-image.sh` tras mergear PR #56/#57/#58.
+Los cambios de *manifiesto* (env vars, secrets) se aplicaron correctamente
+en cada rollout — pero un cambio de *código* dentro de la imagen requiere
+un rebuild + re-import manual explícito (`docker build` →
+`docker save | sudo k3s ctr images import -` → `rollout restart`), que el
+flujo de bootstrap no dispara ni detecta automáticamente.
+
+**Fix aplicado**: `01-build-image.sh` reconstruido + reimportado
+manualmente (el paso `sudo` real, corrido por Pedro), luego
+`kubectl rollout restart deployment/memory-router`. Confirmado
+post-restart: `base_url` resuelve `:8888`.
+
+**Lección, no solo para Hindsight**: cualquier cambio de código en
+`hermes-native/memory-router/` desplegado en `mcps` necesita
+`01-build-image.sh` + reimport + `rollout restart` explícitos — un
+`kubectl apply` de manifiestos por sí solo **no** propaga cambios de
+código, solo de configuración. Esto no es nuevo de este change, pero
+recién se hizo visible acá porque fue la primera vez que un fix de código
+de `memory-router` se probó de punta a punta contra el clúster real
+después de mergear. Documentado también en
+`kubernetes/mcps/bootstrap/README.md`.
 
 **Lección**: la doc pública de Hindsight documenta claramente el patrón de
 dos variables — el proposal/spec original solo miró una. Confirma, otra

@@ -38,6 +38,23 @@ non-interactively:
 Both scripts detect the missing step and print the exact command instead
 of hanging — run it yourself, then re-run the script.
 
+## `05-deploy-manifests.sh` does NOT rebuild the image
+
+`kubectl apply` only propagates *manifest* changes (env vars, secrets,
+resources). A *code* change under `hermes-native/memory-router/` has no
+effect in the cluster until you explicitly re-run `01-build-image.sh`
+(rebuild + `docker save | sudo k3s ctr images import -`) **and**
+`kubectl rollout restart deployment/memory-router` — `05-deploy-manifests.sh`
+alone will not detect or trigger this.
+
+Found live (2026-08-22, `specs/022_hindsight_deployment.md` §8.1 Bug 2):
+a port-default fix landed and merged in code, `05-deploy-manifests.sh`
+ran clean, but the running pod kept using the pre-fix port for hours
+because nobody rebuilt the image. `deploy-all.sh` does not chain
+`01-build-image.sh` automatically either, precisely because its `sudo`
+step cannot run non-interactively — don't assume a clean `deploy-all.sh`
+run means the code in the pod matches the code in the repo.
+
 ## Overriding for a different machine/cluster
 
 Every `MR_*` variable in `00-config.sh` has a default matching `trantor`.
@@ -78,7 +95,8 @@ actually enforced, not just configured.
   bootstrap script). That's the same manual pattern spec 011 already uses
   for remote Engram clients — copy the files over a secure channel, add the
   `/etc/hosts` entry on that machine too.
-- Validating any backend adapter (Hindsight/Honcho/Cognee/Graphiti/
-  knowledge-vault) against a real instance — still an explicit follow-up
-  in each of their specs (015-019), tested so far only against a stubbed
-  HTTP transport.
+- Validating any backend adapter (Honcho/Cognee/Graphiti/knowledge-vault)
+  against a real instance — still an explicit follow-up in each of their
+  specs (016-019), tested so far only against a stubbed HTTP transport.
+  Hindsight is validated end-to-end against a real deployed instance —
+  see `specs/022_hindsight_deployment.md` §8.1.

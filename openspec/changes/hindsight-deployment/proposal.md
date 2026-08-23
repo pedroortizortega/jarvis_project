@@ -104,15 +104,15 @@ Reverting the commit removes the manifests, the spec, and the port fix together.
 
 ## Success Criteria
 
-- [ ] `HindsightBackend()` with no arguments and no env resolves to `http://hindsight.mcps.svc.cluster.local:8888`.
-- [ ] The pod reaches Ready and its health endpoint answers on port 8888 inside the cluster.
-- [ ] An unauthenticated in-cluster request is **rejected**; the same request with the tenant bearer token succeeds.
-- [ ] memory-router `store` to a `/projects/*` namespace reaches Hindsight and returns success — not a degraded/unavailable marker.
-- [ ] A subsequent `search` returns the stored memory with `backend == "hindsight"`.
-- [ ] Deleting the pod and letting it reschedule preserves previously stored memories (PVC persistence proven, not assumed).
-- [ ] Hindsight's LLM calls resolve through `codex-shim` — verified in codex-shim logs, not inferred.
-- [ ] Manifest tests assert: image ref, port 8888, PVC mount at `/home/hindsight/.pg0`, both secret refs, `replicas: 1`, `Recreate`, ClusterIP, and that no Ingress object exists.
-- [ ] `specs/015_hindsight_backend.md`'s deployment checklist item is closed and its §4 table shows `8888`.
+- [x] `HindsightBackend()` with no arguments and no env resolves to `http://hindsight.mcps.svc.cluster.local:8888`.
+- [x] The pod reaches Ready and its health endpoint answers on port 8888 inside the cluster.
+- [x] An unauthenticated in-cluster request is **rejected**; the same request with the tenant bearer token succeeds. (Required a follow-up fix, PR #58 — `HINDSIGHT_API_TENANT_API_KEY` alone had no effect; see `specs/022` §8.1 Bug 1.)
+- [x] memory-router `store` to a `/projects/*` namespace reaches Hindsight and returns success — not a degraded/unavailable marker. (Required a second follow-up — the deployed `memory-router` image was stale, never rebuilt after the port fix merged; see `specs/022` §8.1 Bug 2.)
+- [x] A subsequent `search` returns the stored memory with `backend == "hindsight"`.
+- [x] Deleting the pod and letting it reschedule preserves previously stored memories (PVC persistence proven, not assumed).
+- [x] Hindsight's LLM calls resolve through `codex-shim` — verified in codex-shim logs, not inferred.
+- [x] Manifest tests assert: image ref, port 8888, PVC mount at `/home/hindsight/.pg0`, both secret refs, `replicas: 1`, `Recreate`, ClusterIP, and that no Ingress object exists.
+- [x] `specs/015_hindsight_backend.md`'s deployment checklist item is closed and its §4 table shows `8888`.
 
 ## Proposal question round
 

@@ -49,3 +49,7 @@ log "Verifying the image landed in containerd"
 sudo k3s ctr images list | grep -q "$MR_IMAGE_TAG" \
   && log "OK: $MR_IMAGE_TAG present in containerd" \
   || { log "$MR_IMAGE_TAG NOT found in containerd import list"; exit 1; }
+
+mkdir -p "$(dirname "$MR_IMAGE_HASH_MARKER")"
+mr_source_hash > "$MR_IMAGE_HASH_MARKER"
+log "Recorded source hash for staleness checking: $(cat "$MR_IMAGE_HASH_MARKER")"

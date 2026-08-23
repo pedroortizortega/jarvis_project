@@ -31,3 +31,22 @@ MR_REPO_ROOT="$(cd "$MR_MANIFESTS_DIR/../.." && pwd)"
 MR_ROUTER_SRC_DIR="$MR_REPO_ROOT/hermes-native/memory-router"
 
 log() { printf '[memory-router-bootstrap] %s\n' "$*" >&2; }
+
+# Staleness marker: `01-build-image.sh` writes the content hash of
+# $MR_ROUTER_SRC_DIR/{src,pyproject.toml,Dockerfile} here right after a
+# successful build+import; `05-deploy-manifests.sh` recomputes the same
+# hash and refuses to apply memory-router-deployment.yaml if it doesn't
+# match. Cached outside the repo, same convention as $MR_PKI_DIR.
+# Found live 2026-08-22 (specs/022 §8.1 Bug 2): a merged code fix had zero
+# effect in the cluster for hours because `kubectl apply` never rebuilds
+# the image and nothing detected the mismatch.
+: "${MR_IMAGE_HASH_MARKER:=$HOME/.config/memory-router/last-built-source-hash}"
+
+mr_source_hash() {
+  find "$MR_ROUTER_SRC_DIR/src" "$MR_ROUTER_SRC_DIR/pyproject.toml" \
+       "$MR_ROUTER_SRC_DIR/Dockerfile" -type f -print0 \
+    | sort -z \
+    | xargs -0 sha256sum \
+    | sha256sum \
+    | cut -d' ' -f1
+}

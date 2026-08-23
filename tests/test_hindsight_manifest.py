@@ -148,6 +148,17 @@ class SecretWiringTests(unittest.TestCase):
             {"name": "hindsight-tenant-key", "key": "tenant-api-key"},
         )
 
+    def test_tenant_auth_extension_enabled(self):
+        """Bug found via live validation (2026-08-22): HINDSIGHT_API_TENANT_API_KEY
+        alone has no effect — an unauthenticated request was accepted with the key
+        set but this extension unset. Only setting HINDSIGHT_API_TENANT_EXTENSION
+        actually activates enforcement; the key is just the secret it checks."""
+        env = _env_map(_container())
+        self.assertEqual(
+            env.get("HINDSIGHT_API_TENANT_EXTENSION"),
+            "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension",
+        )
+
     def test_no_plaintext_secret_value(self):
         secret_env_names = {"HINDSIGHT_API_LLM_API_KEY", "HINDSIGHT_API_TENANT_API_KEY"}
         for item in _env_list(_container()):

@@ -80,6 +80,14 @@ spec:
                 secretKeyRef:
                   name: hindsight-codex-shim-key
                   key: internal-key
+            # Bug found via live validation (2026-08-22): setting only
+            # HINDSIGHT_API_TENANT_API_KEY has NO effect — Hindsight
+            # accepted unauthenticated writes with the key present but
+            # this extension unset. HINDSIGHT_API_TENANT_EXTENSION is
+            # what actually activates enforcement; the key is just the
+            # shared secret it checks against. Both are required.
+            - name: HINDSIGHT_API_TENANT_EXTENSION
+              value: "hindsight_api.extensions.builtin.tenant:ApiKeyTenantExtension"
             - name: HINDSIGHT_API_TENANT_API_KEY
               valueFrom:
                 secretKeyRef:

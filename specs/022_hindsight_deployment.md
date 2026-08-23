@@ -271,7 +271,7 @@ son datos nuevos, no una migración de datos existentes.
 - [x] Diseño (`sdd-design`) — `openspec/changes/hindsight-deployment/design.md`
 - [x] Tareas (`sdd-tasks`) — `openspec/changes/hindsight-deployment/tasks.md`
 - [x] Implementación (`sdd-apply`) — PR #56, PR #57
-- [x] Aplicado en `trantor` y validado en vivo contra el clúster real (§8.1)
+- [ ] Aplicado en `trantor` y validado en vivo contra el clúster real (§8.1) — el bug de auth encontrado ahí sigue sin re-verificar tras su fix
 
 ---
 
@@ -310,9 +310,12 @@ efecto — ninguna ruta lo consulta.
 
 **Fix**: agregar `HINDSIGHT_API_TENANT_EXTENSION` al env block de
 `hindsight-deployment.yaml`, con un test de manifiesto nuevo
-(`test_tenant_auth_extension_enabled`) que falla si falta. Re-desplegado y
-re-verificado en vivo: request sin token → `401`; mismo request con el
-bearer real → `200`. Ver rama/PR `fix/hindsight-tenant-auth-extension`.
+(`test_tenant_auth_extension_enabled`) que falla si falta. **Pendiente al
+momento de este commit**: re-desplegar en `trantor` y re-verificar en vivo
+(request sin token → `401` esperado; mismo request con el bearer real →
+`200` esperado) — se hace después de mergear este PR, y este párrafo se
+actualiza con el resultado real una vez confirmado. Ver PR
+`fix/hindsight-tenant-auth-extension`.
 
 **Lección**: la doc pública de Hindsight documenta claramente el patrón de
 dos variables — el proposal/spec original solo miró una. Confirma, otra

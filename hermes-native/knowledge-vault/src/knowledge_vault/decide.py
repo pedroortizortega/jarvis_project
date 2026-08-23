@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from . import layout
 from .atomic import write_atomic
-from .note import body_of, parse_frontmatter, title_of
+from .note import _render_value, body_of, parse_frontmatter, title_of
 
 DECISIONS = ("approved", "rejected")
 
@@ -45,13 +45,6 @@ def awaiting_decision(pending_directory):
     return waiting
 
 
-def _render(value):
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(str(item) for item in value) + "]"
-    text = str(value)
-    return f'"{text}"' if ": " in text or text.endswith(":") else text
-
-
 def decide(proposal_id, decision, rationale, pending_directory, reviewer=None, source=None):
     if decision not in DECISIONS:
         raise ValueError(f"decision must be one of {', '.join(DECISIONS)}, got {decision!r}")
@@ -72,7 +65,7 @@ def decide(proposal_id, decision, rationale, pending_directory, reviewer=None, s
     fields["rationale"] = rationale.strip()
     if source:
         fields["source"] = source
-    lines = [f"{key}: {_render(value)}" for key, value in fields.items()]
+    lines = [f"{key}: {_render_value(value)}" for key, value in fields.items()]
     note = "---\n" + "\n".join(lines) + "\n---\n" + body_of(text).strip() + "\n"
     # 0660: the pending area is where the human writes, so it stays writable.
     return write_atomic(path, note, 0o660)

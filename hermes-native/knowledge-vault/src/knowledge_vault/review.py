@@ -6,19 +6,12 @@ block, so a second, wrapping one rendered as body text instead. Promotion
 reuses `_reviewed_note()` to strip these fields before publish (F-3).
 """
 
-from .note import body_of, parse_frontmatter
+from .note import _render_value, body_of, parse_frontmatter
 
 # Fields the lifecycle adds to a pending note; they belong to the review
 # process, not to the published note (D-10 adds `idempotency_key` to what
 # was `REVIEW_FIELDS`, renamed `PENDING_FIELDS`).
 PENDING_FIELDS = ("reviewer", "decision", "rationale", "idempotency_key")
-
-
-def _render(value):
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(str(item) for item in value) + "]"
-    text = str(value)
-    return f'"{text}"' if ": " in text or text.endswith(":") else text
 
 
 def _reviewed_note(path):
@@ -31,5 +24,5 @@ def _reviewed_note(path):
     fields = {k: v for k, v in parse_frontmatter(text).items() if k not in PENDING_FIELDS}
     if not fields:
         return body_of(text).strip() + "\n"
-    lines = [f"{key}: {_render(value)}" for key, value in fields.items()]
+    lines = [f"{key}: {_render_value(value)}" for key, value in fields.items()]
     return "---\n" + "\n".join(lines) + "\n---\n" + body_of(text).strip() + "\n"

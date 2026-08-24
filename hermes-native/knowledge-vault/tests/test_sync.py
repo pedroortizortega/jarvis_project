@@ -5,7 +5,7 @@ from pathlib import Path
 
 from knowledge_vault import layout
 from knowledge_vault.layout import GIT_IDENTITY as IDENTITY
-from knowledge_vault.sync import GitSync
+from knowledge_vault.sync import AdoptRemoteRefused, GitSync
 
 
 def git(repo, *args):
@@ -74,6 +74,33 @@ class SyncTests(unittest.TestCase):
             self.assertNotIn(f"{layout.KNOWLEDGE_DIRNAME}/20260805090133.md", tracked)
             status = git(tree, "status", "--porcelain", "--untracked-files=all")
             self.assertIn("knowledge/20260805090133.md", status, "the dirty file should remain uncommitted")
+
+    def test_refuses_to_reset_hard_over_uncommitted_local_changes(self):
+        """The vault tree is canonical now (not a disposable mirror copy) —
+        a reviewer's uncommitted decide.py edit must never be silently
+        discarded by _adopt_remote()'s reset --hard."""
+        with tempfile.TemporaryDirectory() as root:
+            remote = Path(root) / "remote.git"
+            subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(remote)], check=True)
+
+            fresh, fresh_tree = self.setup(str(Path(root) / "fresh"))
+            fresh.remote = str(remote)
+            fresh.sync()  # establishes a baseline equal to the (empty) remote
+
+            other, other_tree = self.setup(str(Path(root) / "other"))
+            other.remote = str(remote)
+            (layout.pending_root(other_tree) / "p2.md").write_text("# Draft 2\n", encoding="utf-8")
+            other.sync()  # remote is now ahead of `fresh`
+
+            # A reviewer's uncommitted edit on the `fresh` tree, simulating
+            # decide.py writing straight to disk with no commit.
+            dirty_path = layout.pending_root(fresh_tree) / "p1.md"
+            dirty_path.write_text("# Draft\nDecided\n", encoding="utf-8")
+
+            with self.assertRaises(AdoptRemoteRefused):
+                fresh.sync()
+
+            self.assertEqual("# Draft\nDecided\n", dirty_path.read_text(encoding="utf-8"))
 
     def test_it_commits_without_any_git_identity_configured(self):
         with tempfile.TemporaryDirectory() as root:

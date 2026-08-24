@@ -40,6 +40,17 @@ class PromotionRefused(RuntimeError):
     """
 
 
+class PushFailed(RuntimeError):
+    """The commit succeeded locally but the push to the remote did not.
+
+    Distinct from a promotion failure: the note IS promoted (committed to
+    `knowledge/` locally) — only the remote copy lags. `promote_all()`
+    still counts it and still rebuilds the index; catching up the push is
+    a separate, retryable concern (the next `sync`/`promote` run that
+    successfully reaches the remote will carry this commit along too).
+    """
+
+
 def _validate(vault_directory, note_id):
     """Refuse before any path join or git call (path traversal defense)."""
     if not NOTE_ID.match(note_id):
@@ -48,6 +59,19 @@ def _validate(vault_directory, note_id):
     pending_path = layout.pending_root(vault_directory) / f"{note_id}.md"
     if not pending_path.is_file():
         raise PromotionRefused(f"no pending note {note_id}")
+
+    # decide.py writes reviewer/decision/rationale straight to disk with no
+    # commit — only `sync()` commits `pending/`, on its own schedule. If
+    # promote reaches this note before sync has committed that edit, `git
+    # rm` below would fail (git refuses to rm a file with uncommitted
+    # local modifications) and the rollback would discard the reviewer's
+    # just-made decision. Treat an uncommitted pending note as "not ready
+    # yet" — same as missing reviewer/rationale — rather than racing it.
+    dirty = _git(
+        vault_directory, "status", "--porcelain", "--", f"{layout.PENDING_DIRNAME}/{note_id}.md"
+    ).stdout.strip()
+    if dirty:
+        raise PromotionRefused(f"{note_id}: not yet committed by sync; try again next cycle")
 
     knowledge_path = layout.knowledge_root(vault_directory) / f"{note_id}.md"
     if knowledge_path.exists():
@@ -60,7 +84,7 @@ def _validate(vault_directory, note_id):
     fields = parse_frontmatter(pending_path.read_text(encoding="utf-8"))
     reviewer = (fields.get("reviewer") or "").strip()
     rationale = (fields.get("rationale") or "").strip()
-    decision = fields.get("decision")
+    decision = (fields.get("decision") or "").strip()
     if not reviewer:
         raise PromotionRefused(f"{note_id}: missing reviewer")
     if not rationale:
@@ -68,7 +92,11 @@ def _validate(vault_directory, note_id):
     if decision != "approved":
         raise PromotionRefused(f"{note_id}: decision is {decision!r}, not 'approved'")
 
-    return fields, pending_path, knowledge_path
+    # The stripped values, not the raw fields dict: the commit message
+    # (the audit trail, D-02) must record exactly what was validated, not
+    # a second, unstripped re-read of the same frontmatter that could
+    # silently diverge from it.
+    return {"reviewer": reviewer, "rationale": rationale, "decision": decision}, pending_path, knowledge_path
 
 
 def promote(vault_directory, note_id, remote=None, branch="main", index_path=None, _rebuild_index=True):
@@ -84,6 +112,10 @@ def promote(vault_directory, note_id, remote=None, branch="main", index_path=Non
     `check_published()` to misdiagnose as an unaudited hand `git mv`.
     """
     vault_directory = Path(vault_directory)
+    # vault_lock() touches a file inside vault_directory — same fresh-tree
+    # requirement sync.py's sync() already guards against; mirrored here
+    # for the same reason, not just cosmetic symmetry.
+    vault_directory.mkdir(parents=True, exist_ok=True)
 
     with layout.vault_lock(vault_directory):
         fields, pending_path, knowledge_path = _validate(vault_directory, note_id)
@@ -107,9 +139,9 @@ def promote(vault_directory, note_id, remote=None, branch="main", index_path=Non
             _git(vault_directory, "rm", "-q", "--", relative_pending)
             _git(vault_directory, "add", "--", relative_knowledge)
 
-            rationale = fields.get("rationale", "")
-            reviewer = fields.get("reviewer", "")
-            decision = fields.get("decision", "")
+            # Already the stripped, validated values from _validate() —
+            # not a second, unstripped re-read of the frontmatter.
+            reviewer, rationale, decision = fields["reviewer"], fields["rationale"], fields["decision"]
             message = (
                 f"Promote {note_id}: {title}\n\n"
                 f"Reviewer: {reviewer}\n"
@@ -135,7 +167,17 @@ def promote(vault_directory, note_id, remote=None, branch="main", index_path=Non
             build_index(vault_directory, index_path)
 
         if remote:
-            _git(vault_directory, "push", remote, branch)
+            # Deliberately outside the rollback try/except above: by this
+            # point the commit has already landed locally, so a push
+            # failure must never roll back a real, valid promotion — the
+            # note IS promoted (D-05/D-09 both already satisfied). It is
+            # raised as PushFailed, a distinct type from a promotion
+            # failure, so promote_all() can still count this note as
+            # promoted and still rebuild the index (see there).
+            try:
+                _git(vault_directory, "push", remote, branch)
+            except subprocess.CalledProcessError as error:
+                raise PushFailed(f"{note_id}: committed locally but push failed") from error
 
     return knowledge_path
 
@@ -163,8 +205,27 @@ def promote_all(vault_directory, index_path=None, **kwargs):
         try:
             promote(vault_directory, path.stem, index_path=None, _rebuild_index=False, **kwargs)
         except PromotionRefused:
+            # Expected steady state: not yet reviewed, or sync hasn't
+            # committed the reviewer's edit yet. Not an error.
+            continue
+        except PushFailed:
+            # The commit landed locally — this note IS promoted, only the
+            # remote copy lags. Still counted, still gets the index
+            # rebuild below; a later successful push (this run's retry
+            # candidates, or sync's own push cycle) catches the remote up.
+            promoted.append(path.stem)
+        except layout.VaultLocked:
+            # A concurrent sync()/promote() holds the lock right now.
+            # Skip this note and keep trying the rest of the batch — the
+            # contended note gets picked up again next timer run.
             continue
         except (subprocess.CalledProcessError, OSError):
+            # An unexpected git/disk failure. Also skipped so it doesn't
+            # abort the batch, but distinct from PromotionRefused: this
+            # is the class of failure an operator should notice if it
+            # persists across runs (systemd journal captures this
+            # printed line — see main()).
+            print(f"knowledge-vault promote: {path.stem}: failed, will retry", file=sys.stderr)
             continue
         else:
             promoted.append(path.stem)

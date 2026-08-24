@@ -18,6 +18,11 @@ from pathlib import Path
 from . import layout
 
 
+class AdoptRemoteRefused(RuntimeError):
+    """Refused to converge on the remote because doing so would discard
+    uncommitted local changes (`git reset --hard` is destructive)."""
+
+
 class GitSync:
     """Stage, commit and push `pending/` in the vault tree's own git repo."""
 
@@ -48,7 +53,16 @@ class GitSync:
         """Converge on the remote's history before syncing (same lesson as
         the old mirror.py's `_adopt_remote`): anything else that pushes to
         the bare repo leaves this tree behind, and every later push is
-        rejected until someone intervenes."""
+        rejected until someone intervenes.
+
+        Unlike the old mirror.py, this tree IS the canonical vault — a
+        reviewer's just-decided note can be sitting uncommitted in
+        `pending/` (decide.py writes straight to disk, no commit; only
+        `sync()` commits it, and only after this check). `reset --hard`
+        would discard that edit silently. Refuse instead: the next sync
+        run tries again, and a genuinely fresh/clean tree converges as
+        before.
+        """
         if not self.remote:
             return
         self._git("remote", "remove", "origin", check=False)
@@ -59,6 +73,12 @@ class GitSync:
             "rev-list", "--count", f"HEAD..origin/{self.branch}", check=False
         )
         if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):
+            dirty = self._git("status", "--porcelain", check=False).stdout.strip()
+            if dirty:
+                raise AdoptRemoteRefused(
+                    "local tree is behind the remote and has uncommitted changes; "
+                    "refusing to reset --hard and discard them"
+                )
             self._git("reset", "-q", "--hard", f"origin/{self.branch}")
 
     def _pending(self):
@@ -105,7 +125,7 @@ def main():
     )
     try:
         changed = sync.sync()
-    except layout.VaultLocked as error:
+    except (layout.VaultLocked, AdoptRemoteRefused) as error:
         print(f"knowledge-vault sync: {error}", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as error:

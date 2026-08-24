@@ -9,6 +9,7 @@ from knowledge_vault.note import parse_frontmatter
 from knowledge_vault.promote import (
     NOTE_ID,
     PromotionRefused,
+    PushFailed,
     check_published,
     promote,
     promote_all,
@@ -370,6 +371,102 @@ class CrashAtomicityTests(unittest.TestCase):
             self.assertTrue((layout.pending_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
             self.assertFalse((layout.knowledge_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
             self.assertEqual(before, git(repo.root, "rev-parse", "HEAD").strip())
+
+
+class UncommittedDecisionRaceTests(unittest.TestCase):
+    """decide.py writes reviewer/decision/rationale straight to disk with no
+    commit — only sync()'s own timer commits pending/. If promote reaches a
+    note before that commit lands, `git rm` would fail and (pre-fix) the
+    rollback discarded the reviewer's just-made edit."""
+
+    def test_refuses_a_pending_note_with_uncommitted_local_changes(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            # Committed first with no decision — the state sync() leaves a
+            # freshly-proposed note in.
+            path = repo.write_pending(pending_note(reviewer="", decision="", rationale=""))
+            # decide.py's write: straight to disk, no commit.
+            path.write_text(pending_note(), encoding="utf-8")
+
+            with self.assertRaises(PromotionRefused):
+                promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
+
+            self.assertTrue(path.exists(), "the reviewer's uncommitted decision must survive")
+            self.assertIn("decision: approved", path.read_text(encoding="utf-8"))
+            self.assertFalse((layout.knowledge_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+
+    def test_promotes_once_sync_has_committed_the_decision(self):
+        """Same scenario, but sync() (simulated by a plain commit) has run
+        first — promotion proceeds normally."""
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            path = repo.write_pending(pending_note(reviewer="", decision="", rationale=""))
+            path.write_text(pending_note(), encoding="utf-8")
+            git(repo.root, "add", "-A")
+            git(
+                repo.root, "-c", "user.email=x@x", "-c", "user.name=x", "commit", "-q", "-m", "sync"
+            )
+            promoted = promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
+            self.assertTrue(promoted.exists())
+
+
+class PushFailureTests(unittest.TestCase):
+    """A push failure must never be indistinguishable from a promotion
+    failure — the commit already landed locally (D-05/D-09 satisfied)."""
+
+    def test_a_failed_push_raises_push_failed_not_a_rollback(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            repo.write_pending(pending_note())
+            real_git = layout.run_git
+
+            def failing_push(vault_directory, *args, **kwargs):
+                if args and args[0] == "push":
+                    raise subprocess.CalledProcessError(1, ["git", *args])
+                return real_git(vault_directory, *args, **kwargs)
+
+            with patch("knowledge_vault.promote._git", side_effect=failing_push):
+                with self.assertRaises(PushFailed):
+                    promote(
+                        repo.root,
+                        NOTE_ID_VALUE,
+                        remote="origin",
+                        index_path=Path(root) / "index.json",
+                    )
+            # The commit is real and local, unlike CrashAtomicityTests above.
+            self.assertTrue((layout.knowledge_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+            self.assertFalse((layout.pending_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+
+    def test_promote_all_still_counts_a_push_failed_note_and_rebuilds_the_index(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            repo.write_pending(pending_note())
+            real_git = layout.run_git
+
+            def failing_push(vault_directory, *args, **kwargs):
+                if args and args[0] == "push":
+                    raise subprocess.CalledProcessError(1, ["git", *args])
+                return real_git(vault_directory, *args, **kwargs)
+
+            index_path = Path(root) / "index.json"
+            with patch("knowledge_vault.promote._git", side_effect=failing_push):
+                promoted = promote_all(repo.root, remote="origin", index_path=index_path)
+            self.assertEqual([NOTE_ID_VALUE], promoted)
+            self.assertTrue(index_path.exists())
+
+
+class ConcurrentWriterTests(unittest.TestCase):
+    def test_a_contended_note_is_skipped_not_batch_aborting(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            repo.write_pending(pending_note(note_id="20260101000000"), note_id="20260101000000")
+            repo.write_pending(pending_note(note_id="20260102000000"), note_id="20260102000000")
+            with layout.vault_lock(repo.root):
+                promoted = promote_all(repo.root, index_path=Path(root) / "index.json")
+            self.assertEqual([], promoted, "every note contends on the same held lock")
+            # Both notes are still there, untouched, ready for the next run.
+            self.assertTrue((layout.pending_root(repo.root) / "20260101000000.md").exists())
+            self.assertTrue((layout.pending_root(repo.root) / "20260102000000.md").exists())
 
 
 class PromoteAllTests(unittest.TestCase):

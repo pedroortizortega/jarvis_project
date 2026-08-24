@@ -17,15 +17,6 @@ from pathlib import Path
 
 from . import layout
 
-# git refuses to commit without an identity, and a system user has no
-# gitconfig, so sync (like promote) always supplies its own.
-IDENTITY = {
-    "GIT_AUTHOR_NAME": "knowledge-vault",
-    "GIT_AUTHOR_EMAIL": "knowledge-vault@localhost",
-    "GIT_COMMITTER_NAME": "knowledge-vault",
-    "GIT_COMMITTER_EMAIL": "knowledge-vault@localhost",
-}
-
 
 class GitSync:
     """Stage, commit and push `pending/` in the vault tree's own git repo."""
@@ -36,14 +27,7 @@ class GitSync:
         self.branch = branch
 
     def _git(self, *args, check=True):
-        return subprocess.run(
-            ["git", *args],
-            cwd=self.vault_directory,
-            capture_output=True,
-            text=True,
-            check=check,
-            env={**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"},
-        )
+        return layout.run_git(self.vault_directory, *args, check=check)
 
     def _ensure_repo(self):
         """Idempotent: the migration script already clones the vault tree
@@ -94,6 +78,12 @@ class GitSync:
         self._git("commit", "-q", "-m", f"Sync {count} pending note{'s' if count != 1 else ''}")
 
     def sync(self):
+        # vault_lock() touches a file inside vault_directory — it must exist
+        # before the lock is acquired, or a genuinely fresh tree (no prior
+        # _ensure_repo() call) raises FileNotFoundError here instead of
+        # being initialized, contradicting this module's own claim of being
+        # usable standalone on a fresh tree.
+        self.vault_directory.mkdir(parents=True, exist_ok=True)
         with layout.vault_lock(self.vault_directory):
             self._ensure_repo()
             self._adopt_remote()

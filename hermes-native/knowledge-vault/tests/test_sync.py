@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from knowledge_vault import layout
-from knowledge_vault.sync import IDENTITY, GitSync
+from knowledge_vault.layout import GIT_IDENTITY as IDENTITY
+from knowledge_vault.sync import GitSync
 
 
 def git(repo, *args):
@@ -20,6 +21,18 @@ class SyncTests(unittest.TestCase):
         layout.knowledge_root(tree).mkdir(parents=True)
         (layout.pending_root(tree) / "p1.md").write_text("# Draft\nFirst\n", encoding="utf-8")
         return GitSync(tree), tree
+
+    def test_a_genuinely_nonexistent_tree_is_initialised_not_a_crash(self):
+        """vault_lock() touches a file inside vault_directory, so the tree
+        must exist before the lock is acquired — sync() itself creates it
+        rather than relying on some earlier _ensure_repo() call, unlike the
+        other tests here whose setup() pre-creates pending/knowledge/."""
+        with tempfile.TemporaryDirectory() as root:
+            tree = Path(root) / "does-not-exist-yet"
+            self.assertFalse(tree.exists())
+            sync = GitSync(tree)
+            self.assertEqual([], sync.sync())
+            self.assertTrue((tree / ".git").is_dir())
 
     def test_first_run_initialises_the_repository_and_commits_pending(self):
         with tempfile.TemporaryDirectory() as root:

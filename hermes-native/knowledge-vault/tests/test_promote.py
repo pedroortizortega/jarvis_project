@@ -142,7 +142,7 @@ class PathTraversalTests(unittest.TestCase):
     def _refused_before_any_git_call(self, note_id):
         with tempfile.TemporaryDirectory() as root:
             repo = VaultRepo(root)
-            with patch("knowledge_vault.promote.subprocess.run") as run:
+            with patch("knowledge_vault.layout.subprocess.run") as run:
                 with self.assertRaises(PromotionRefused):
                     promote(repo.root, note_id)
                 run.assert_not_called()
@@ -171,23 +171,38 @@ class SubprocessSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             repo = VaultRepo(root)
             repo.write_pending(pending_note())
-            with patch("knowledge_vault.promote.subprocess.run", wraps=subprocess.run) as run:
+            with patch("knowledge_vault.layout.subprocess.run", wraps=subprocess.run) as run:
                 promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
+            self.assertTrue(run.call_args_list, "no git call was observed — patch target is dead")
             for call in run.call_args_list:
                 self.assertNotIn("shell", call.kwargs)
                 self.assertIsInstance(call.args[0], list)
 
-    def test_git_mv_passes_the_id_after_a_separator(self):
+    def test_git_rm_and_add_pass_the_id_after_a_separator(self):
+        """promote() writes the stripped note to knowledge/ directly (via
+        write_atomic, before any git call — see promote()'s docstring on
+        crash-atomicity), then stages the move as `git rm pending/<id>.md`
+        + `git add knowledge/<id>.md` rather than a single `git mv`. Both
+        still need `--` so an id that looked like a flag is never
+        interpreted as one."""
         with tempfile.TemporaryDirectory() as root:
             repo = VaultRepo(root)
             repo.write_pending(pending_note())
-            with patch("knowledge_vault.promote.subprocess.run", wraps=subprocess.run) as run:
+            with patch("knowledge_vault.layout.subprocess.run", wraps=subprocess.run) as run:
                 promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
-            mv_calls = [call for call in run.call_args_list if "mv" in call.args[0]]
-            self.assertTrue(mv_calls, "git mv was never called")
-            argv = mv_calls[0].args[0]
-            self.assertIn("--", argv)
-            self.assertGreater(argv.index(f"{layout.KNOWLEDGE_DIRNAME}/{NOTE_ID_VALUE}.md"), argv.index("--"))
+            rm_calls = [call for call in run.call_args_list if "rm" in call.args[0]]
+            add_calls = [call for call in run.call_args_list if "add" in call.args[0]]
+            self.assertTrue(rm_calls, "git rm was never called")
+            self.assertTrue(add_calls, "git add was never called")
+            rm_argv, add_argv = rm_calls[0].args[0], add_calls[0].args[0]
+            self.assertIn("--", rm_argv)
+            self.assertIn("--", add_argv)
+            self.assertGreater(
+                rm_argv.index(f"{layout.PENDING_DIRNAME}/{NOTE_ID_VALUE}.md"), rm_argv.index("--")
+            )
+            self.assertGreater(
+                add_argv.index(f"{layout.KNOWLEDGE_DIRNAME}/{NOTE_ID_VALUE}.md"), add_argv.index("--")
+            )
 
 
 class CommitMessageInjectionTests(unittest.TestCase):
@@ -311,6 +326,50 @@ class PromoteGreenPathTests(unittest.TestCase):
                 with self.assertRaises(layout.VaultLocked):
                     promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
             self.assertTrue((layout.pending_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+
+
+class CrashAtomicityTests(unittest.TestCase):
+    """A failure mid-promotion must never leave a note moved-but-uncommitted
+    — that state is indistinguishable from an unaudited hand `git mv` to
+    `check_published()`, and `promote_all()` would never retry it since it
+    only scans `pending/`."""
+
+    def test_a_git_failure_after_the_write_rolls_back_and_stays_retryable(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            repo.write_pending(pending_note())
+            knowledge_path = layout.knowledge_root(repo.root) / f"{NOTE_ID_VALUE}.md"
+            real_git = layout.run_git
+
+            def failing_commit(vault_directory, *args, **kwargs):
+                if args and args[0] == "commit":
+                    raise subprocess.CalledProcessError(1, ["git", *args])
+                return real_git(vault_directory, *args, **kwargs)
+
+            with patch("knowledge_vault.promote._git", side_effect=failing_commit):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
+
+            self.assertTrue(
+                (layout.pending_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists(),
+                "pending note must survive a mid-promotion failure for the next retry",
+            )
+            self.assertFalse(
+                knowledge_path.exists(), "a failed promotion must not leave an orphan knowledge/ file"
+            )
+            self.assertEqual([], check_published(repo.root), "no half-published note should exist")
+
+    def test_a_write_atomic_failure_touches_neither_pending_nor_knowledge(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = VaultRepo(root)
+            repo.write_pending(pending_note())
+            before = git(repo.root, "rev-parse", "HEAD").strip()
+            with patch("knowledge_vault.promote.write_atomic", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    promote(repo.root, NOTE_ID_VALUE, index_path=Path(root) / "index.json")
+            self.assertTrue((layout.pending_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+            self.assertFalse((layout.knowledge_root(repo.root) / f"{NOTE_ID_VALUE}.md").exists())
+            self.assertEqual(before, git(repo.root, "rev-parse", "HEAD").strip())
 
 
 class PromoteAllTests(unittest.TestCase):

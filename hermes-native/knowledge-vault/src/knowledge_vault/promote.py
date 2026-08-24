@@ -21,6 +21,7 @@ from pathlib import Path
 
 from . import layout
 from .atomic import write_atomic
+from .layout import run_git as _git
 from .note import parse_frontmatter, title_of
 from .retrieval import build_index
 from .review import PENDING_FIELDS, _reviewed_note
@@ -31,37 +32,12 @@ from .review import PENDING_FIELDS, _reviewed_note
 # boundary (design.md Threat Matrix: "Path traversal via argv").
 NOTE_ID = re.compile(r"\A[0-9]{14}\Z")
 
-# git refuses to commit without an identity, and a system user has no
-# gitconfig, so promote/sync always supply their own (same pattern as the
-# old mirror.py's IDENTITY).
-IDENTITY = {
-    "GIT_AUTHOR_NAME": "knowledge-vault",
-    "GIT_AUTHOR_EMAIL": "knowledge-vault@localhost",
-    "GIT_COMMITTER_NAME": "knowledge-vault",
-    "GIT_COMMITTER_EMAIL": "knowledge-vault@localhost",
-}
-
 
 class PromotionRefused(RuntimeError):
     """The note failed D-05's contract, or `../etc/passwd` tried to be an id.
 
     Raised before any git call and before any file is touched.
     """
-
-
-def _git(vault_directory, *args, check=True):
-    # Argument list only, never `shell=True`: a rationale containing `\n`,
-    # `"`, `$(...)` or `--force` must never become a shell command or a git
-    # option (design.md Threat Matrix: "Shell / subprocess",
-    # "Commit-message injection").
-    return subprocess.run(
-        ["git", *args],
-        cwd=vault_directory,
-        capture_output=True,
-        text=True,
-        check=check,
-        env={**os.environ, **IDENTITY, "GIT_TERMINAL_PROMPT": "0"},
-    )
 
 
 def _validate(vault_directory, note_id):
@@ -95,8 +71,18 @@ def _validate(vault_directory, note_id):
     return fields, pending_path, knowledge_path
 
 
-def promote(vault_directory, note_id, remote=None, branch="main", index_path=None):
-    """pending/<id>.md -> knowledge/<id>.md. Same id, stripped fields, audited commit."""
+def promote(vault_directory, note_id, remote=None, branch="main", index_path=None, _rebuild_index=True):
+    """pending/<id>.md -> knowledge/<id>.md. Same id, stripped fields, audited commit.
+
+    Ordered so the riskiest, most failure-prone step (rendering/writing the
+    stripped note) happens BEFORE any git call, not between two of them: if
+    `_reviewed_note()`/`write_atomic()` raises, neither `pending/` nor `git`
+    has been touched yet, so the note is untouched and simply retried on the
+    next `promote_all()` pass. If a git call fails after the file write, the
+    `except` below rolls the write back so the same holds for that window
+    too — this never leaves a note moved-but-uncommitted for
+    `check_published()` to misdiagnose as an unaudited hand `git mv`.
+    """
     vault_directory = Path(vault_directory)
 
     with layout.vault_lock(vault_directory):
@@ -106,32 +92,43 @@ def promote(vault_directory, note_id, remote=None, branch="main", index_path=Non
         relative_knowledge = f"{layout.KNOWLEDGE_DIRNAME}/{note_id}.md"
         layout.knowledge_root(vault_directory).mkdir(parents=True, exist_ok=True)
 
-        # `--` separates options from the path: an id that somehow looked
-        # like a flag can never be interpreted as one.
-        _git(vault_directory, "mv", "--", relative_pending, relative_knowledge)
-
         # review._reviewed_note() already implements the exact strip (F-3);
         # promotion reuses it rather than reimplementing frontmatter surgery.
-        published = _reviewed_note(knowledge_path)
-        write_atomic(knowledge_path, published, 0o640)
-
+        # Reads the still-in-`pending/` file — nothing has moved yet, so a
+        # failure here (a malformed note, a disk error) leaves `pending/`
+        # exactly as it was.
+        published = _reviewed_note(pending_path)
         title = title_of(published) or note_id
-        rationale = fields.get("rationale", "")
-        reviewer = fields.get("reviewer", "")
-        decision = fields.get("decision", "")
-        message = (
-            f"Promote {note_id}: {title}\n\n"
-            f"Reviewer: {reviewer}\n"
-            f"Decision: {decision}\n"
-            # One argv item to `git commit -m`, never a shell string: a
-            # rationale holding a newline, a quote, `$(...)` or `--force`
-            # can never become a second command or an option.
-            f"Rationale: {rationale}\n"
-        )
-        _git(vault_directory, "add", "--", relative_knowledge)
-        _git(vault_directory, "commit", "-m", message)
 
-        if index_path is not None:
+        try:
+            write_atomic(knowledge_path, published, 0o640)
+            # `--` separates options from the path: an id that somehow
+            # looked like a flag can never be interpreted as one.
+            _git(vault_directory, "rm", "-q", "--", relative_pending)
+            _git(vault_directory, "add", "--", relative_knowledge)
+
+            rationale = fields.get("rationale", "")
+            reviewer = fields.get("reviewer", "")
+            decision = fields.get("decision", "")
+            message = (
+                f"Promote {note_id}: {title}\n\n"
+                f"Reviewer: {reviewer}\n"
+                f"Decision: {decision}\n"
+                # One argv item to `git commit -m`, never a shell string: a
+                # rationale holding a newline, a quote, `$(...)` or
+                # `--force` can never become a second command or an option.
+                f"Rationale: {rationale}\n"
+            )
+            _git(vault_directory, "commit", "-m", message)
+        except Exception:
+            # Roll back whatever landed on disk/in the index so the next
+            # promote_all() pass sees `pending/<id>.md` untouched again,
+            # not a half-promoted note stuck forever.
+            _git(vault_directory, "reset", "--hard", "HEAD", check=False)
+            knowledge_path.unlink(missing_ok=True)
+            raise
+
+        if _rebuild_index and index_path is not None:
             # D-07: promote is the only actor that can invalidate knowledge/,
             # so it is the only actor whose action needs to rebuild the
             # index; search-serve keeps zero write paths.
@@ -143,7 +140,7 @@ def promote(vault_directory, note_id, remote=None, branch="main", index_path=Non
     return knowledge_path
 
 
-def promote_all(vault_directory, **kwargs):
+def promote_all(vault_directory, index_path=None, **kwargs):
     """Timer entry point (D-04).
 
     Promotes every pending/*.md that passes validation and silently skips
@@ -151,6 +148,11 @@ def promote_all(vault_directory, **kwargs):
     in pending/ between timer runs is the normal, expected steady state, not
     an error. One promotion failure (e.g. a git error on one note) must not
     abort the batch for the rest.
+
+    Rebuilds the index once after the whole batch, not once per note: each
+    `build_index()` call rescans every published note, so doing it inside
+    the per-note loop is an O(batch size x knowledge/ size) full rescan for
+    what should be one O(knowledge/ size) rescan per timer run.
     """
     pending = layout.pending_root(vault_directory)
     if not pending.is_dir():
@@ -159,13 +161,17 @@ def promote_all(vault_directory, **kwargs):
     promoted = []
     for path in sorted(pending.glob("*.md")):
         try:
-            promote(vault_directory, path.stem, **kwargs)
+            promote(vault_directory, path.stem, index_path=None, _rebuild_index=False, **kwargs)
         except PromotionRefused:
             continue
         except (subprocess.CalledProcessError, OSError):
             continue
         else:
             promoted.append(path.stem)
+
+    if promoted and index_path is not None:
+        build_index(vault_directory, index_path)
+
     return promoted
 
 

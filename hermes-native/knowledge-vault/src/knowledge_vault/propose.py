@@ -1,58 +1,74 @@
 """Submit a proposal from an agent.
 
-A proposal carries no authority: it only asks a human to look. That is why an
-agent may write here freely, and why nothing it writes can reach the vault
-without a recorded approval.
+A proposal carries no authority: it only asks a human to look. JARVIS may
+write freely under `pending/` — and nowhere else — and nothing it writes
+reaches `knowledge/` without a human-run promotion (see design.md D-01/D-02
+of knowledge-vault-restructure).
 """
 
 import hashlib
-import json
 import os
 import sys
-from dataclasses import asdict
-from pathlib import Path
 
+from . import layout
 from .atomic import write_atomic
-from .models import Proposal
-from .note import parse_frontmatter
+from .note import new_note_id, parse_frontmatter, render
+
+# Empty and ready to fill: a reviewer who already sees the key only needs to
+# type a value, the same lesson `review.py`'s PENDING_FIELDS records.
+_EMPTY_REVIEW_FIELDS = {"reviewer": "", "decision": "", "rationale": ""}
 
 
-def spool_sender(directory):
-    """Deliver a proposal by spooling it where the review runner will find it."""
-    directory = Path(directory)
-
-    def send(proposal):
-        # 0640: the review user reads this as another account.
-        write_atomic(
-            directory / f"{proposal.id}.json",
-            json.dumps({"proposal": asdict(proposal)}),
-            0o640,
-        )
-        return proposal
-
-    return send
+def _existing_by_key(pending_directory, key):
+    """A pending note already carrying this idempotency key, if any (F-7/D-10)."""
+    if not pending_directory.is_dir():
+        return None
+    for path in sorted(pending_directory.glob("*.md")):
+        try:
+            fields = parse_frontmatter(path.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if fields.get("idempotency_key") == key:
+            return path
+    return None
 
 
-def propose(markdown, provenance, spool_directory):
-    """Propose a note, once. Identical knowledge is never proposed twice."""
-    if not markdown.strip():
+def _taken_ids(vault_directory, pending_directory):
+    taken = {path.stem for path in layout.published_notes(vault_directory)}
+    if pending_directory.is_dir():
+        taken |= {path.stem for path in pending_directory.glob("*.md")}
+    return taken
+
+
+def propose(markdown, provenance, vault_directory):
+    """Propose a note, once. Identical knowledge is never proposed twice.
+
+    Writes `pending/<id>.md` directly — no JSON spool intermediary. This
+    function exposes no way to target anything other than `pending/`.
+    """
+    markdown = markdown.strip()
+    if not markdown:
         raise ValueError("a proposal needs content")
     if not parse_frontmatter(markdown).get("type"):
-        # Refused here rather than at publication, so the agent learns while it
+        # Refused here rather than at promotion, so the agent learns while it
         # still has the context to fix it.
         raise ValueError("a note needs OKF frontmatter with a type")
-    spool = Path(spool_directory)
-    key = hashlib.sha256(markdown.strip().encode("utf-8")).hexdigest()
-    for path in sorted(spool.glob("*.json")):
-        try:
-            existing = Proposal(**json.loads(path.read_text(encoding="utf-8"))["proposal"])
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-        if existing.idempotency_key == key:
-            return existing
-    proposal = Proposal.create(markdown.strip(), key, provenance)
-    spool_sender(spool)(proposal)
-    return proposal
+
+    pending = layout.pending_root(vault_directory)
+    key = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+    existing = _existing_by_key(pending, key)
+    if existing is not None:
+        return existing
+
+    note_id = new_note_id(_taken_ids(vault_directory, pending))
+    fields = dict(provenance or {})
+    fields.update(parse_frontmatter(markdown))
+    fields.update(_EMPTY_REVIEW_FIELDS)
+    fields["idempotency_key"] = key
+    note = render(markdown, fields, note_id)
+    pending.mkdir(parents=True, exist_ok=True)
+    # 0660: JARVIS owns pending/, the human reviewer shares its group.
+    return write_atomic(pending / f"{note_id}.md", note, 0o660)
 
 
 def main():
@@ -62,9 +78,9 @@ def main():
     if len(sys.argv) > 1:
         provenance["source"] = sys.argv[1]
     try:
-        proposal = propose(markdown, provenance, os.environ["KNOWLEDGE_VAULT_PROPOSAL_SPOOL"])
+        path = propose(markdown, provenance, os.environ["KNOWLEDGE_VAULT_DIR"])
     except (ValueError, KeyError, OSError) as error:
         print(f"knowledge-vault propose: {error}", file=sys.stderr)
         return 1
-    print(proposal.id)
+    print(path.stem)
     return 0

@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from knowledge_vault import layout
 from knowledge_vault.decide import decide
 from knowledge_vault.note import parse_frontmatter
 
@@ -13,8 +14,8 @@ PENDING = (
 
 class DecideTests(unittest.TestCase):
     def pending(self, root):
-        directory = Path(root) / "pending"
-        directory.mkdir()
+        directory = layout.pending_root(root)
+        directory.mkdir(parents=True)
         (directory / "p1.md").write_text(PENDING, encoding="utf-8")
         return directory
 
@@ -88,7 +89,7 @@ class DecideCommandTests(unittest.TestCase):
             pending = DecideTests().pending(root)
             reason = 'rechazo: el termino "resolucion cuantica" no esta establecido'
             environment = {
-                "KNOWLEDGE_VAULT_PENDING_DIR": str(pending),
+                "KNOWLEDGE_VAULT_DIR": root,
                 "KNOWLEDGE_VAULT_REVIEWER": "pedro",
                 "KNOWLEDGE_VAULT_DECISION_SOURCE": "telegram",
             }

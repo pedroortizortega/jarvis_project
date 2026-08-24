@@ -71,14 +71,14 @@ Chain strategy: pending
 
 ## Phase 4: Units, installer, migration (PR 4)
 
-- [ ] 4.1 Delete `systemd/knowledge-vault-{publisher,review,review-sync,approve,mirror}.{service,timer}`.
-- [ ] 4.2 Create `knowledge-vault-promote.{service,timer}`: `User=knowledge-vault-promote`, `ReadWritePaths=` tree `.git`/`knowledge`/`pending` + state/index; no `RestrictSUIDSGID`; interval from `KNOWLEDGE_VAULT_PROMOTE_INTERVAL` (default `5min`).
-- [ ] 4.3 Create `knowledge-vault-sync.{service,timer}`: `User=knowledge-vault-sync`, RW `.git`+`pending`, `ReadOnlyPaths=<tree>/knowledge`.
-- [ ] 4.4 Modify `knowledge-vault-search.service`: `KNOWLEDGE_VAULT_DIR` → `/opt/knowledge-vault/tree`; still no RW paths.
-- [ ] 4.5 `install-host.sh`: add `-promote`/`-sync`/`-search` users (F-5); set `knowledge/` `0750`, `pending/` `2770`, `state/` `2770`; install new units; walkthrough → propose→decide→promote.
-- [ ] 4.6 Delete `scripts/approve_locally.py`.
-- [ ] 4.7 Create `scripts/migrate-to-tree.sh`: idempotent clone, `mkdir knowledge pending`, `git mv *.md knowledge/`, drift-check gate, reconcile frozen `pending` branch, push; never deletes old vault.
-- [ ] 4.8 Manual E2E: run migration on staging host, full propose→decide cycle, wait one timer interval, confirm promotion with no manual trigger.
+- [x] 4.1 Delete `systemd/knowledge-vault-{publisher,review,review-sync,approve,mirror}.{service,timer}`.
+- [x] 4.2 Create `knowledge-vault-promote.{service,timer}`: `User=knowledge-vault-promote`, `ReadWritePaths=` tree `.git`/`knowledge`/`pending` + state/index; no `RestrictSUIDSGID`; interval from `KNOWLEDGE_VAULT_PROMOTE_INTERVAL` (default `5min`).
+- [x] 4.3 Create `knowledge-vault-sync.{service,timer}`: `User=knowledge-vault-sync`, RW `.git`+`pending`, `ReadOnlyPaths=<tree>/knowledge`.
+- [x] 4.4 Modify `knowledge-vault-search.service`: `KNOWLEDGE_VAULT_DIR` → `/opt/knowledge-vault/tree`; still no RW paths.
+- [x] 4.5 `install-host.sh`: add `-promote`/`-sync`/`-search` users (F-5); set `knowledge/` `0750`, `pending/` `2770`, `state/` `2770`; install new units; walkthrough → propose→decide→promote.
+- [x] 4.6 Delete `scripts/approve_locally.py`.
+- [x] 4.7 Create `scripts/migrate-to-tree.sh`: idempotent clone, `mkdir knowledge pending`, `git mv *.md knowledge/`, drift-check gate, reconcile frozen `pending` branch, push; never deletes old vault.
+- [ ] 4.8 Manual E2E: run migration on staging host, full propose→decide cycle, wait one timer interval, confirm promotion with no manual trigger. (Out of scope for this PR — requires a real host; not automatable in this environment.)
 
 ## Phase 5: Docs, skill, spec sync (PR 5)
 

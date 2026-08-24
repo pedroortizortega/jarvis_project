@@ -9,7 +9,7 @@ Type=simple
 User=knowledge-vault-search
 Group=knowledge-vault
 WorkingDirectory=/opt/knowledge-vault
-Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/vault
+Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/tree
 Environment=KNOWLEDGE_VAULT_INDEX=/var/lib/knowledge-vault/index/index.json
 Environment=KNOWLEDGE_VAULT_SEARCH_HOST=10.42.0.1
 Environment=KNOWLEDGE_VAULT_SEARCH_PORT=8088
@@ -22,9 +22,13 @@ ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-search-serve
 Restart=on-failure
 RestartSec=5s
 
-# Read-only on vault and index; the publisher remains the sole writer to
-# either. No ReadWritePaths= anywhere — this unit never writes.
-ReadOnlyPaths=/opt/knowledge-vault/vault /var/lib/knowledge-vault/index
+# Read-only on the whole vault tree and the index; only promote writes
+# knowledge/ (D-04) and only promote rebuilds the index (D-07). No
+# ReadWritePaths= anywhere — this unit never writes. KNOWLEDGE_VAULT_DIR
+# points at the tree root, not knowledge/ directly: the knowledge/-only
+# scope is enforced in code via layout.published_notes() (D-01), not by
+# this unit's config, so a stray "pending" typo here can never widen it.
+ReadOnlyPaths=/opt/knowledge-vault/tree /var/lib/knowledge-vault/index
 
 NoNewPrivileges=yes
 PrivateTmp=yes

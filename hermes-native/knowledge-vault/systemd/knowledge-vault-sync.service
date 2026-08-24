@@ -1,0 +1,44 @@
+[Unit]
+Description=Knowledge vault sync: commit+push pending/ to the private git remote
+Documentation=file:///opt/knowledge-vault/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=knowledge-vault-sync
+Group=knowledge-vault
+WorkingDirectory=/opt/knowledge-vault/tree
+Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/tree
+Environment=KNOWLEDGE_VAULT_REMOTE=/srv/git/knowledge-vault.git
+Environment=KNOWLEDGE_VAULT_BRANCH=main
+ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-sync
+
+# sync stages/commits/pushes pending/ only — knowledge/ is promote's alone
+# (design.md D-04/D-08). ReadOnlyPaths is listed after ReadWritePaths so the
+# more specific knowledge/ entry wins and stays enforced even though it sits
+# under the writable tree root; sync.py enforces the same scoping in code
+# (GitSync._pending() pathspecs "-- pending") so the property holds under
+# test too, not just under this unit file. The "-" prefix on the lock file
+# tolerates a fresh tree on the very first run (layout.vault_lock()).
+ReadWritePaths=/opt/knowledge-vault/tree/.git /opt/knowledge-vault/tree/pending -/opt/knowledge-vault/tree/.vault.lock
+ReadOnlyPaths=/opt/knowledge-vault/tree/knowledge
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# Same shared-repo reasoning as knowledge-vault-promote.service (F-6):
+# core.sharedRepository=group makes git set setgid on directories so both
+# writer accounts keep write access, which RestrictSUIDSGID would break.
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

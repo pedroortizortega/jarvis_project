@@ -1,0 +1,13 @@
+[Unit]
+Description=Commit and push pending/ notes to the private git remote
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+# The cycle is idempotent: a run with nothing to commit costs a few
+# milliseconds and writes nothing, so a missed run simply happens next time.
+Persistent=false
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

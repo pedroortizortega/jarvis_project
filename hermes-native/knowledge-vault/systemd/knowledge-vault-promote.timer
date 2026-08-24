@@ -1,0 +1,20 @@
+[Unit]
+Description=Promote reviewed notes from pending/ to knowledge/ (D-04, unattended)
+
+[Timer]
+OnBootSec=5min
+# Default interval; genuinely configurable, not hardcoded here. install-host.sh
+# reads $KNOWLEDGE_VAULT_PROMOTE_INTERVAL (default 5min, same as this file) and
+# writes it into a systemd drop-in
+# (/etc/systemd/system/knowledge-vault-promote.timer.d/interval.conf) on every
+# run, so re-running the installer with a different value updates the
+# effective interval without editing this shipped unit.
+OnUnitActiveSec=5min
+# The cycle is idempotent: promote_all() skips every note that isn't ready
+# and a run with nothing to promote costs a few milliseconds, so a missed
+# run simply happens next time.
+Persistent=false
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

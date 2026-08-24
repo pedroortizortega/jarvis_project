@@ -50,12 +50,15 @@ else
 fi
 
 echo "Directories"
-# The tree itself is created here so ownership/mode is right from the start;
-# scripts/migrate-to-tree.sh clones the bare repo's contents into it (an
-# empty, correctly-owned directory is a valid git-clone target). D-04:
-# promote is the sole writer to knowledge/ (0750, promote-owned); pending/ is
-# group-writable (2770) because JARVIS (this repo's own system user, outside
-# this package's scope) and the human reviewer both write there.
+# The tree itself is created here so ownership/mode is right from the start.
+# Because knowledge/, pending/ and .vault.lock already exist by the time
+# scripts/migrate-to-tree.sh runs, that script cannot `git clone` into the
+# tree (git refuses a non-empty target) — it uses init+fetch+reset --hard
+# instead, which only touches tracked paths and so leaves what is created
+# here untouched. D-04: promote is the sole writer to knowledge/ (0750,
+# promote-owned); pending/ is group-writable (2770) because JARVIS (this
+# repo's own system user, outside this package's scope) and the human
+# reviewer both write there.
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX" "$PREFIX/tree"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX/tree/knowledge"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 2770 "$PREFIX/tree/pending"

@@ -42,6 +42,11 @@ else
 fi
 git_ config core.sharedRepository group
 say "core.sharedRepository=group"
+# Belt-and-suspenders for a host where install-host.sh ran before this file
+# existed there: promote/sync's systemd sandbox can write TO .vault.lock but
+# not CREATE it (their ReadWritePaths= never lists the tree root itself), so
+# layout.vault_lock()'s first touch() would otherwise fail. Idempotent.
+[[ -f "$TREE/.vault.lock" ]] || : > "$TREE/.vault.lock"
 
 echo "Step 3: knowledge/ + pending/, move existing notes"
 mkdir -p "$TREE/knowledge" "$TREE/pending"

@@ -59,6 +59,14 @@ echo "Directories"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX" "$PREFIX/tree"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX/tree/knowledge"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 2770 "$PREFIX/tree/pending"
+# The tree root itself is 0750 (read-write only to promote:group, not
+# world) and neither promote.service's nor sync.service's ReadWritePaths=
+# lists the tree root — only .git/knowledge/pending/.vault.lock under it —
+# so under ProtectSystem=strict the unit's own sandbox can never CREATE
+# .vault.lock, only write to it once it exists. Created here, once, so
+# layout.vault_lock()'s first touch() ever needed is a no-op instead of a
+# PermissionError against a read-only sandboxed parent.
+install -m 0660 -o "$PROMOTE_USER" -g "$GROUP" /dev/null "$PREFIX/tree/.vault.lock"
 # Derived, disposable data any group member may rebuild while searching.
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 2770 "$STATE/index"
 # Reserved for future writer state; unused by promote/sync today (both take

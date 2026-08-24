@@ -1,8 +1,8 @@
 """Read-only HTTP search bridge over the published vault.
 
-Exposes exactly `POST /search` and `GET /healthz`. Nothing here writes: the
-publisher (`publisher.py`) remains the sole writer to the vault and its
-index. This module reuses `search_vault()` verbatim rather than calling
+Exposes exactly `POST /search` and `GET /healthz`. Nothing here writes:
+`promote.py` remains the sole writer to `knowledge/` and the index (D-04/D-07).
+This module reuses `search_vault()` verbatim rather than calling
 `Retriever` directly, so the `MIN_RELEVANCE` filter, per-note dedupe,
 frontmatter title lookup, excerpt truncation, and stale-index retry never
 drift from the CLI path (design.md D-01).

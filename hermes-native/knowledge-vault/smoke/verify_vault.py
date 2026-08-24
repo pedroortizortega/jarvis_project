@@ -1,8 +1,9 @@
 """Smoke checks for the knowledge vault's host-local behaviour.
 
-Unit tests cover the contracts; this exercises the pieces as an operator meets
-them: the publisher as a real process with its exit code, retrieval over a
-vault large enough to measure, and a full review cycle.
+Unit tests cover the contracts; this exercises the pieces as an operator
+meets them: a full propose -> decide -> promote -> search cycle, run against
+a real `git init` tree (the actual git plumbing promote/sync shell out to),
+not a mock.
 
     cd hermes-native/knowledge-vault
     PYTHONPATH=src python smoke/verify_vault.py
@@ -10,17 +11,16 @@ vault large enough to measure, and a full review cycle.
 Every path below is a temporary directory. This never touches a real vault.
 """
 
-import json
-import os
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
-from knowledge_vault.models import Decision, Proposal
-from knowledge_vault.retrieval import Retriever, build_index
-from knowledge_vault.review import run_review
+from knowledge_vault.decide import decide
+from knowledge_vault.promote import PromotionRefused, check_published, promote_all
+from knowledge_vault.propose import propose
+from knowledge_vault.retrieval import build_index
+from knowledge_vault.search import search_vault
 
 FAILURES = []
 
@@ -31,117 +31,120 @@ def check(label, condition, detail=""):
         FAILURES.append(label)
 
 
-def publisher_reports_corrupt_approved_records():
-    print("\nA corrupt approved record is reported, not swallowed")
+def _git_init(vault):
+    """A real repo, not a mock — promote/sync both shell out to git."""
+    subprocess.run(["git", "init", "-q", "-b", "main", str(vault)], check=True)
+
+
+def propose_decide_promote_search_cycle():
+    print("\nA note moves pending/ -> knowledge/ only after a decision, and only")
+    print("promotion makes it searchable")
     with tempfile.TemporaryDirectory() as root:
-        root = Path(root)
-        spool, vault, state = root / "spool", root / "vault", root / "state"
-        spool.mkdir()
-        good = Proposal.create("---\ntype: fact\n---\n# Good\nPublished body", "key-good", {"agent": "hermes"})
-        approval = Decision(good.id, 1, "reviewer", "approved", "ok")
-        (spool / "good.json").write_text(
-            json.dumps({"proposal": good.__dict__, "decision": approval.__dict__}), encoding="utf-8"
+        vault = Path(root) / "tree"
+        _git_init(vault)
+        index = Path(root) / "index.json"
+
+        pending_path = propose(
+            "---\ntype: fact\n---\n# Trantor has no Longhorn\nOnly local-path exists.",
+            {"agent": "smoke-test"},
+            vault,
         )
-        (spool / "corrupt.json").write_text("{not json", encoding="utf-8")
+        check("propose() writes only under pending/", pending_path.parent.name == "pending")
+        note_id = pending_path.stem
 
-        run = subprocess.run(
-            [sys.executable, "-c", "import sys; from knowledge_vault.publisher import main; sys.exit(main())"],
-            capture_output=True,
-            text=True,
-            env={
-                **os.environ,
-                "PYTHONPATH": "src",
-                "KNOWLEDGE_VAULT_DIR": str(vault),
-                "KNOWLEDGE_VAULT_STATE_DIR": str(state),
-                "KNOWLEDGE_VAULT_APPROVED_DIR": str(spool),
-            },
-        )
-        check("exit code is non-zero so systemd marks the run failed", run.returncode == 1, f"exit={run.returncode}")
-        check("stderr names the corrupt file", "corrupt.json" in run.stderr)
-        check("the healthy note was still published", len(list(vault.glob("*.md"))) == 1)
-
-
-def retrieval_stops_rehashing_an_unchanged_vault():
-    print("\nRepeat queries stop re-reading an unchanged vault")
-    with tempfile.TemporaryDirectory() as root:
-        root = Path(root)
-        vault = root / "vault"
-        vault.mkdir()
-        for number in range(500):
-            (vault / f"note-{number:04d}.md").write_text(
-                "---\ntype: fact\n---\n"
-                + f"# Note {number}\nContent about kubernetes and trantor number {number}.\n" * 20,
-                encoding="utf-8",
-            )
-        index = root / "index.json"
         build_index(vault, index)
-        retriever = Retriever(vault, index)
-
-        start = time.perf_counter()
-        first = retriever.search("kubernetes")
-        cold = time.perf_counter() - start
-
-        start = time.perf_counter()
-        retriever.search("kubernetes")
-        warm = time.perf_counter() - start
-
-        check("the first query returns cited hits", first.available and bool(first.hits))
+        hits_before = search_vault("Longhorn", vault, index)
         check(
-            "the second query is faster over 500 notes",
-            warm < cold,
-            f"cold={cold * 1000:.1f}ms warm={warm * 1000:.1f}ms ({cold / warm:.1f}x)",
+            "a proposed-but-undecided note is never a search hit",
+            not any(hit.note == f"{note_id}.md" for hit in hits_before),
         )
-        (vault / "note-0007.md").write_text("# Note 7\nRewritten.\n", encoding="utf-8")
-        stale = retriever.search("kubernetes")
-        check("an edited note still invalidates the index", not stale.available, stale.reason)
+
+        promoted_before_decision = promote_all(vault, index_path=index)
+        check(
+            "promote_all() skips a note with no decision yet, without raising",
+            promoted_before_decision == [],
+        )
+        check(
+            "an undecided note is still in pending/, not knowledge/",
+            pending_path.exists() and not (vault / "knowledge" / f"{note_id}.md").exists(),
+        )
+
+        decide(note_id, "approved", "Verified against the same source twice.", vault / "pending", reviewer="pedro")
+        # sync.py normally commits pending/ before promote runs; promote
+        # refuses an uncommitted pending edit (it would race a concurrent
+        # sync). Reproduce that commit here without pulling sync.py in, to
+        # keep this check scoped to propose/decide/promote/search.
+        subprocess.run(["git", "-C", str(vault), "add", "pending"], check=True)
+        subprocess.run(["git", "-C", str(vault), "commit", "-q", "-m", "Sync 1 pending note"], check=True)
+
+        promoted = promote_all(vault, index_path=index)
+        check("promote_all() promotes the now-decided note", promoted == [note_id])
+
+        published_path = vault / "knowledge" / f"{note_id}.md"
+        check("the note landed in knowledge/ with the same id", published_path.exists())
+        check("the note left pending/", not pending_path.exists())
+
+        published_text = published_path.read_text(encoding="utf-8")
+        check(
+            "review fields are stripped from the published note",
+            "reviewer:" not in published_text and "rationale:" not in published_text,
+        )
+
+        log = subprocess.run(
+            ["git", "-C", str(vault), "log", "-1", "--format=%B"], capture_output=True, text=True, check=True
+        ).stdout
+        check("reviewer and rationale are recorded in the promoting commit", "pedro" in log and "Verified" in log)
+
+        hits_after = search_vault("Longhorn", vault, index)
+        check(
+            "the promoted note is now a search hit",
+            any(hit.note == f"{note_id}.md" for hit in hits_after),
+        )
+
+        offenders = check_published(vault)
+        check("promote --check reports nothing wrong with a clean knowledge/", offenders == [])
 
 
-def review_cycle_runs_unattended():
-    print("\nThe review flow runs without a human driving each step")
+def promote_refuses_a_note_missing_review_fields():
+    print("\npromote() refuses a note directly (not via promote_all's skip) when")
+    print("reviewer/rationale/decision are missing")
     with tempfile.TemporaryDirectory() as root:
-        root = Path(root)
-        spool, pending, decisions = root / "spool", root / "pending", root / "decisions"
-        for directory in (spool, pending, decisions):
-            directory.mkdir()
-        proposal = Proposal.create("---\ntype: fact\n---\n# Draft\nNeeds review", "key-review", {"agent": "hermes"})
-        (spool / "p.json").write_text(json.dumps({"proposal": proposal.__dict__}), encoding="utf-8")
+        vault = Path(root) / "tree"
+        _git_init(vault)
 
-        projected, _ = run_review(spool, pending, decisions)
-        note = pending / f"{proposal.id}.md"
-        check("the proposal is projected for Obsidian", projected == [note] and note.exists())
+        pending_path = propose("---\ntype: fact\n---\n# Draft\nNot reviewed yet.", {}, vault)
+        note_id = pending_path.stem
+        subprocess.run(["git", "-C", str(vault), "add", "pending"], check=True)
+        subprocess.run(["git", "-C", str(vault), "commit", "-q", "-m", "Sync 1 pending note"], check=True)
 
-        note.write_text(note.read_text(encoding="utf-8") + "\nreviewer notes\n", encoding="utf-8")
-        edited = note.read_text(encoding="utf-8")
-        run_review(spool, pending, decisions)
-        check("a second run leaves the review in progress alone", note.read_text(encoding="utf-8") == edited)
+        from knowledge_vault.promote import promote
 
-        note.write_text(
-            f"---\nproposal_id: {proposal.id}\nversion: 1\nreviewer: reviewer\n"
-            "decision: approved\nrationale: Checked\n---\n# Draft\nNeeds review\n",
+        try:
+            promote(vault, note_id)
+            refused = False
+        except PromotionRefused:
+            refused = True
+        check("promote() raises PromotionRefused for a note missing review fields", refused)
+        check("nothing was moved by the refused promotion", pending_path.exists())
+
+
+def a_hand_moved_note_with_leaked_fields_is_caught():
+    print("\ncheck_published() catches an unaudited hand git-mv that leaked review fields")
+    with tempfile.TemporaryDirectory() as root:
+        vault = Path(root) / "tree"
+        _git_init(vault)
+        (vault / "knowledge").mkdir(parents=True)
+        (vault / "knowledge" / "20260101000000.md").write_text(
+            "---\ntype: fact\nreviewer: pedro\ndecision: approved\nrationale: ok\n---\n# Hand-moved\nBody.\n",
             encoding="utf-8",
         )
-        run_review(spool, pending, decisions)
-        exported = decisions / f"{proposal.id}.json"
-        check(
-            "the decision is exported for the control plane",
-            exported.exists() and json.loads(exported.read_text(encoding="utf-8"))["decision"] == "approved",
-        )
-        check("the decided file leaves the pending area", not note.exists())
-
-        broken = pending / "broken.md"
-        broken.write_text(
-            "---\nproposal_id: p1\nversion: 1\nreviewer: reviewer\ndecision: maybe\nrationale: unsure\n---\n# Draft\n",
-            encoding="utf-8",
-        )
-        problems = []
-        run_review(spool, pending, decisions, on_failure=problems.append)
-        check("a malformed decision is reported", len(problems) == 1, problems[0].reason if problems else "")
-        check("a malformed decision stays for the reviewer to fix", broken.exists())
+        offenders = check_published(vault)
+        check("the hand-moved note is flagged", offenders == ["20260101000000"])
 
 
-publisher_reports_corrupt_approved_records()
-retrieval_stops_rehashing_an_unchanged_vault()
-review_cycle_runs_unattended()
+propose_decide_promote_search_cycle()
+promote_refuses_a_note_missing_review_fields()
+a_hand_moved_note_with_leaked_fields_is_caught()
 
 print(f"\n{'ALL CHECKS PASSED' if not FAILURES else 'FAILED: ' + ', '.join(FAILURES)}")
 sys.exit(1 if FAILURES else 0)

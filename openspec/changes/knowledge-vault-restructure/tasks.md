@@ -54,20 +54,20 @@ Chain strategy: pending
 
 ## Phase 3: Promote + sync (PR 3)
 
-- [ ] 3.1 RED `test_promote.py`: refuses missing `reviewer`/`rationale`, `decision != approved`, existing `knowledge/<id>.md` (D-09); rejects `../`, absolute ids, no git call.
-- [ ] 3.2 RED `test_promote.py`: no `shell=True`; id passed after `--`.
-- [ ] 3.3 RED `test_promote.py`: rationale with `\n`, `"`, `$(...)`, `--force` never escapes argv.
-- [ ] 3.4 GREEN `promote.py`: `promote()` — validate, `git mv --`, strip via `review._reviewed_note()`, commit with reviewer+rationale, rebuild index, push, under `vault_lock()`.
-- [ ] 3.5 RED `test_promote.py`: `promote_all()` promotes eligible notes, skips ineligible without raising, one failure doesn't abort the batch.
-- [ ] 3.6 GREEN `promote.py`: `promote_all(vault)` scanning `pending/*.md`.
-- [ ] 3.7 RED `test_promote.py`: `check_published()` flags hand-`git mv`'d note still carrying `REVIEW_FIELDS`.
-- [ ] 3.8 GREEN `promote.py`: `check_published()`, `main()`, `check_main()`.
-- [ ] 3.9 Create `sync.py` from `mirror.py`: drop `_mirror_files()`; keep `IDENTITY`/`_git`/`_adopt_remote`/`_pending`/push; stage `pending/` only.
-- [ ] 3.10 RED `test_sync.py`: dirty file under `knowledge/` never committed; failing push doesn't lose the commit.
-- [ ] 3.11 Delete `mirror.py`, `review_sync.py`, `test_mirror.py`, `test_review_sync.py`.
-- [ ] 3.12 `pyproject.toml`: add `-promote`/`-promote-check`/`-sync`; remove `-publisher`/`-review`/`-review-sync`/`-mirror`.
-- [ ] 3.13 Add `vault_lock()` (`fcntl.flock(LOCK_EX)`, D-08) to `layout.py`; reuse in `promote.py`/`sync.py`.
-- [ ] 3.14 Run Unit 3 focused command against real temp git repo.
+- [x] 3.1 RED `test_promote.py`: refuses missing `reviewer`/`rationale`, `decision != approved`, existing `knowledge/<id>.md` (D-09); rejects `../`, absolute ids, no git call.
+- [x] 3.2 RED `test_promote.py`: no `shell=True`; id passed after `--`.
+- [x] 3.3 RED `test_promote.py`: rationale with `\n`, `"`, `$(...)`, `--force` never escapes argv.
+- [x] 3.4 GREEN `promote.py`: `promote()` — validate, `git mv --`, strip via `review._reviewed_note()`, commit with reviewer+rationale, rebuild index, push, under `vault_lock()`.
+- [x] 3.5 RED `test_promote.py`: `promote_all()` promotes eligible notes, skips ineligible without raising, one failure doesn't abort the batch.
+- [x] 3.6 GREEN `promote.py`: `promote_all(vault)` scanning `pending/*.md`.
+- [x] 3.7 RED `test_promote.py`: `check_published()` flags hand-`git mv`'d note still carrying `REVIEW_FIELDS`.
+- [x] 3.8 GREEN `promote.py`: `check_published()`, `main()`, `check_main()`.
+- [x] 3.9 Create `sync.py` from `mirror.py`: drop `_mirror_files()`; keep `IDENTITY`/`_git`/`_adopt_remote`/`_pending`/push; stage `pending/` only.
+- [x] 3.10 RED `test_sync.py`: dirty file under `knowledge/` never committed; failing push doesn't lose the commit.
+- [x] 3.11 Delete `mirror.py`, `review_sync.py`, `test_mirror.py`, `test_review_sync.py`.
+- [x] 3.12 `pyproject.toml`: add `-promote`/`-promote-check`/`-sync`; remove `-publisher`/`-review`/`-review-sync`/`-mirror`.
+- [x] 3.13 Add `vault_lock()` (`fcntl.flock(LOCK_EX)`, D-08) to `layout.py`; reuse in `promote.py`/`sync.py`. (already present from PR1; reused, not reimplemented)
+- [x] 3.14 Run Unit 3 focused command against real temp git repo.
 
 ## Phase 4: Units, installer, migration (PR 4)
 

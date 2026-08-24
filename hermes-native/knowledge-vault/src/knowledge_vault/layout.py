@@ -13,10 +13,40 @@ See design.md D-01/D-02 (knowledge-vault-restructure).
 import contextlib
 import fcntl
 import os
+import subprocess
 from pathlib import Path
 
 KNOWLEDGE_DIRNAME = "knowledge"
 PENDING_DIRNAME = "pending"
+
+# git refuses to commit without an identity, and a system user has no
+# gitconfig, so every writer (promote, sync) supplies its own. Shared here
+# rather than duplicated per module, so a future change to it (or to the
+# subprocess-safety env vars) lands in one place, not two that can drift.
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "knowledge-vault",
+    "GIT_AUTHOR_EMAIL": "knowledge-vault@localhost",
+    "GIT_COMMITTER_NAME": "knowledge-vault",
+    "GIT_COMMITTER_EMAIL": "knowledge-vault@localhost",
+}
+
+
+def run_git(vault_directory, *args, check=True):
+    """The one place `git` is ever invoked from this package.
+
+    Argument list only, never `shell=True`: a rationale containing `\\n`,
+    `"`, `$(...)` or `--force` must never become a shell command or a git
+    option (design.md Threat Matrix: "Shell / subprocess",
+    "Commit-message injection").
+    """
+    return subprocess.run(
+        ["git", *args],
+        cwd=vault_directory,
+        capture_output=True,
+        text=True,
+        check=check,
+        env={**os.environ, **GIT_IDENTITY, "GIT_TERMINAL_PROMPT": "0"},
+    )
 
 
 def knowledge_root(vault_directory):

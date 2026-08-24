@@ -35,10 +35,24 @@ say "skipped: disable any knowledge-vault-{review,review-sync,approve,publisher,
 
 echo "Step 2: clone the tree"
 if [[ ! -d "$TREE/.git" ]]; then
-  git clone --branch "$BRANCH" "$REMOTE" "$TREE"
-  say "cloned $REMOTE -> $TREE"
+  # `git clone` refuses a non-empty target directory — and $TREE is never
+  # empty by the time this script runs: install-host.sh already created
+  # knowledge/, pending/ and .vault.lock in it (deliberately, so those
+  # exist with correct ownership/mode before anything else touches the
+  # tree). init + fetch + reset --hard populates the working tree from the
+  # remote's history the same way `git clone` would, without requiring an
+  # empty starting directory; a hard reset only ever touches tracked
+  # paths, so the pre-existing untracked knowledge/pending/.vault.lock
+  # survive it untouched. Same pattern sync.py's GitSync._ensure_repo()
+  # already uses in code, mirrored here in bash.
+  mkdir -p "$TREE"
+  git_ init -q -b "$BRANCH"
+  git_ remote add origin "$REMOTE"
+  git_ fetch -q origin "$BRANCH"
+  git_ reset -q --hard "origin/$BRANCH"
+  say "initialized $TREE from $REMOTE (clone would have refused the non-empty target)"
 else
-  say "$TREE/.git already exists, not re-cloning"
+  say "$TREE/.git already exists, not re-initializing"
 fi
 git_ config core.sharedRepository group
 say "core.sharedRepository=group"

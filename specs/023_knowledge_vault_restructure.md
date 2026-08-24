@@ -53,21 +53,26 @@ nunca ninguna otra carpeta que se agregue después.
 
 ---
 
-## 2. Decisiones resueltas (D-01 a D-06)
+## 2. Decisiones resueltas (D-01 a D-06, más D-04/D-13 de `design.md`)
 
 Las 6 decisiones de `proposal.md` quedan asentadas como hechos resueltos de
 este spec — no quedan abiertas. D-01 y D-02 fueron confirmadas directamente
-por el usuario (no por default de timeout); D-03 a D-06 son los defaults
-propuestos, no reabiertos en la ronda de preguntas.
+por el usuario (no por default de timeout); D-03/D-05/D-06 son los defaults
+propuestos, no reabiertos en la ronda de preguntas. **D-04 fue enmendada a
+mano después de la primera pasada de este spec** — el mecanismo de promoción
+que sigue es el de `design.md`, no la versión original de abajo — y D-13,
+el riesgo de auto-aprobación que introduce esa enmienda, fue agregada y
+**aceptada explícitamente por el usuario**, no dejada como pregunta abierta.
 
 | ID | Pregunta | Decisión |
 |---|---|---|
 | D-01 | ¿Sobrevive la revisión por teléfono? | **Retirada.** `review-sync` y la rama `pending` separada se eliminan. La revisión offline por teléfono no tiene reemplazo en este change; si se quiere después, es un follow-up explícito y separado, no algo preservado en silencio. |
 | D-02 | ¿Se sigue registrando el rationale? | **Sí — mandatorio, nunca se descarta en silencio.** `pending/<id>.md` conserva el frontmatter `reviewer`/`decision`/`rationale`; la promoción se niega a correr sin los tres campos, los quita antes de publicar, y los registra en el mensaje de commit de la promoción. El historial de git es el audit trail. |
-| D-03 | ¿Cómo ocurre la promoción mecánicamente? | Un comando `knowledge-vault-promote` que corre el humano (`git mv` + strip + commit + push). Un `git mv` manual sigue funcionando pero es explícitamente una vía de escape no auditada. |
-| D-04 | ¿Sobrevive el invariante "un solo escritor"? | **Reescopeado, no eliminado.** Nuevo invariante: JARVIS escribe solo `pending/`; solo el actor de promoción escribe `knowledge/`. Se aplica dos veces, como hoy: ownership/modo de archivo más `ReadWritePaths=`/`InaccessiblePaths=` por unidad systemd. |
-| D-05 | ¿Sigue existiendo `knowledge-vault-mirror`? | **Colapsa.** El árbol del vault es el repo git; el repo bare sigue como su remoto. Una sola unidad de sync hace commit+push del árbol del vault; el paso de copia a un scratch-worktree se elimina. |
+| D-03 | ¿Cómo ocurre la promoción mecánicamente, en el nivel del comando? | `promote()`: `git mv` + strip de `REVIEW_FIELDS` (vía `review._reviewed_note()`) + commit con reviewer/rationale en el mensaje + rebuild de índice + push, todo bajo `layout.vault_lock()`. Un `git mv` manual sigue funcionando pero es explícitamente una vía de escape no auditada, detectada por `promote --check` (`check_published()`). |
+| D-04 | ¿Quién dispara la promoción — un humano por nota, o algo unattended? | **Enmendada — RESUELTO por pedido explícito del usuario: un timer unattended, no un trigger manual por id.** La versión original de este spec (`systemctl start knowledge-vault-promote@<id>` por nota) queda **superada**; ver `design.md` D-04. `knowledge-vault-promote.timer` corre `promote_all()` en un intervalo fijo (default `5min`, configurable vía `KNOWLEDGE_VAULT_PROMOTE_INTERVAL`), escaneando todo `pending/*.md` y promoviendo cada nota que ya tiene `reviewer`+`decision: approved`+`rationale`, sin fallar en las que no los tienen — eso es estado estacionario esperado entre corridas, no un error. Esto elimina el último checkpoint humano explícito que existía antes de cada promoción individual — ver D-13, la contrapartida de esta enmienda, **también resuelta y aceptada, no abierta**. |
+| D-05 | ¿Sigue existiendo `knowledge-vault-mirror`? | **Colapsa.** El árbol del vault es el repo git; el repo bare sigue como su remoto. Una sola unidad de sync hace commit+push del árbol del vault (`pending/` únicamente); el paso de copia a un scratch-worktree se elimina. |
 | D-06 | ¿Qué pasa con `proposals/`/`decisions/`/`approved/` + `approve_locally.py`? | **Se eliminan**, según D-02/D-05. `propose` escribe `pending/<id>.md` directamente. Sus propios docstrings ya los llaman stand-ins temporales. |
+| D-13 | El riesgo de auto-aprobación que introduce el timer unattended de D-04 — ¿se mitiga o se acepta? | **RESUELTO — aceptado explícitamente por el usuario, no una laguna.** Nada a nivel de filesystem impide que el propio proceso de JARVIS escriba `reviewer`/`decision: approved`/`rationale` en una nota `pending/` que él mismo creó, antes de que corra el timer. Lo que sigue enforced por kernel es la frontera `pending/` → `knowledge/` (JARVIS jamás puede escribir `knowledge/`); lo que **no** está enforced técnicamente es quién puede llenar esos tres campos dentro de `pending/` — eso es una instrucción imperativa de `propose-note` SKILL.md, un límite de comportamiento del agente, no uno kernel-enforced. Aceptado porque este repo ya confía en que JARVIS no viole otras instrucciones de skill de forma similar (p. ej. nunca afirmar que una nota fue guardada antes de la aprobación humana), y porque separar los campos de veredicto de revisión del frontmatter de la propia nota ya había sido rechazado una vez (confunde Obsidian con dos bloques de frontmatter). Revisar si este sistema alguna vez corre multi-tenant, o con un agente de menor confianza que "el propio agente del operador". |
 
 ---
 
@@ -92,14 +97,23 @@ consistente con D-04.
 ## 4. Contrato de promoción
 
 La promoción es el único camino por el que una nota pasa de `pending/` a
-`knowledge/`, y es un acto humano, auditado, nunca disparable por JARVIS.
+`knowledge/`. **Es unattended, no un acto humano por nota** (D-04, enmendada):
+`knowledge-vault-promote.timer` corre `promote_all()` en un intervalo fijo
+(default `5min`), y ningún humano dispara la promoción de una nota
+individual. Sigue siendo, en todo momento, imposible de disparar por JARVIS —
+eso no cambió con la enmienda de D-04 — pero el checkpoint humano explícito
+que existía antes de cada promoción individual desapareció; ver D-13 para el
+riesgo que introduce esa pérdida, aceptado, no mitigado.
 
-- **Reviewer y rationale son mandatorios.** El comando `knowledge-vault-promote`
-  se niega a correr si `pending/<id>.md` no tiene los tres campos
-  `reviewer`/`decision`/`rationale` en su frontmatter.
+- **Reviewer y rationale son mandatorios.** `promote()`/`promote_all()` se
+  niegan a mover una nota a `knowledge/` si `pending/<id>.md` no tiene los
+  tres campos `reviewer`/`decision: approved`/`rationale` en su frontmatter.
+  `promote_all()` no falla ni levanta error por una nota que aún no los
+  tiene — es el estado estacionario esperado de cualquier nota entre
+  corridas del timer, no un problema.
 - **Los campos de revisión se quitan antes de publicar.** `knowledge/<id>.md`
-  nunca contiene `REVIEW_FIELDS` (`review.py:69`) — quedarían filtrados a la
-  nota publicada si no se quitan explícitamente.
+  nunca contiene `REVIEW_FIELDS` (`review.py`'s `PENDING_FIELDS`) — quedarían
+  filtrados a la nota publicada si no se quitan explícitamente.
 - **El audit trail se traslada al historial de git.** El mensaje del commit
   de promoción registra `reviewer` y `rationale`, así la propiedad de
   auditoría no se pierde al quitar los campos de la nota.
@@ -107,13 +121,20 @@ La promoción es el único camino por el que una nota pasa de `pending/` a
   re-mint de id — los links intra-vault que referencian el id siguen
   resolviendo después de promover.
 - **Escape hatch no auditado, pero no silencioso.** Un `git mv` manual de
-  `pending/` a `knowledge/` sigue funcionando (D-03), pero un chequeo de
-  validación separado corre sobre `knowledge/` y reporta cualquier nota
+  `pending/` a `knowledge/` sigue funcionando (D-03), pero `promote --check`
+  (`check_published()`) corre sobre `knowledge/` y reporta cualquier nota
   publicada que aún cargue `REVIEW_FIELDS` — un `git mv` a mano nunca publica
   campos de revisión en silencio.
-- **JARVIS no puede disparar promoción.** Ningún skill/tool/comando expuesto
-  a JARVIS ejecuta la promoción; solo un humano corriendo el comando
-  directamente puede mover una nota a `knowledge/`.
+- **JARVIS no puede disparar promoción — pero puede, sin ser detectado
+  técnicamente, pre-llenar los campos que la habilitan (D-13).** Ningún
+  skill/tool/comando expuesto a JARVIS ejecuta `promote()`/`promote_all()`
+  directa o indirectamente: eso sigue kernel-enforced. Lo que **no** está
+  enforced es evitar que el propio proceso de JARVIS escriba
+  `reviewer`/`decision: approved`/`rationale` en una nota `pending/` que él
+  mismo propuso, antes de que el timer la levante — es una instrucción de
+  `propose-note` SKILL.md, un límite de comportamiento del agente, no uno
+  técnico. Ver D-13 (§2): riesgo real, planteado durante el diseño y
+  **aceptado explícitamente por el usuario**, no una laguna sin documentar.
 
 ---
 

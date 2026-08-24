@@ -106,15 +106,52 @@ MUST continue to resolve after promotion.
 ### Requirement: JARVIS Cannot Trigger Promotion
 
 No agent-facing code path (skill, tool, or command JARVIS can invoke) MUST be
-able to execute promotion. Promotion MUST be triggerable only by a human
-running the promote command directly.
+able to execute promotion, directly or indirectly. Promotion runs unattended,
+on a fixed interval (`knowledge-vault-promote.timer` calling `promote_all()`,
+default `5min`, configurable via `KNOWLEDGE_VAULT_PROMOTE_INTERVAL`) — no
+human, and no agent, triggers a single note's promotion by hand. What matters
+is that JARVIS has no path to invoking it at all, not that a human invokes it
+per note (design.md D-04, amended from an earlier per-id manual-trigger
+design after explicit user request).
 
 #### Scenario: No agent-facing promotion path exists
 
 - GIVEN the set of tools/skills exposed to JARVIS is inspected
 - WHEN it is searched for a promotion capability
-- THEN none exists — only a human-run command can move a note into
-  `knowledge/`
+- THEN none exists — only the unattended `knowledge-vault-promote.timer` (or
+  a human running the promote command by hand as the unaudited escape hatch)
+  can move a note into `knowledge/`; JARVIS can trigger neither
+
+### Requirement: Self-Approval Risk From Unattended Promotion Is Documented and Accepted, Not Mitigated
+
+Removing the per-note human trigger (see above) removes the last explicit
+human checkpoint before an individual note's promotion. Nothing at the
+filesystem or systemd layer MUST be assumed to prevent JARVIS's own process
+from writing `reviewer`, `decision: approved`, and `rationale` into a pending
+note it created itself before the promote timer next runs. This risk MUST be
+documented in the `propose-note` SKILL.md and in `docs/services/
+knowledge-vault.md` as an accepted, user-confirmed risk (design.md D-13) —
+never silently mitigated by a mechanism this spec does not otherwise
+describe, and never omitted from either document.
+
+#### Scenario: The risk is stated in the skill JARVIS loads
+
+- GIVEN `skills/propose-note/SKILL.md` is inspected
+- WHEN it is read for guidance on the `reviewer`/`decision`/`rationale`
+  fields
+- THEN it states, as an imperative instruction to the agent, that JARVIS
+  MUST NOT pre-fill or suggest values for those fields, and that no
+  technical control other than this instruction prevents it from doing so
+
+#### Scenario: The risk is stated in the operator-facing docs
+
+- GIVEN `docs/services/knowledge-vault.md`'s safety model section is
+  inspected
+- WHEN it is read for what promotion does and does not enforce
+- THEN it states plainly that the `pending/` → `knowledge/` write boundary
+  is kernel-enforced but that who is allowed to fill the review-verdict
+  fields inside `pending/` is not, and that this is an accepted risk, not a
+  gap
 
 ### Requirement: Only the Promote Actor Writes `knowledge/`
 

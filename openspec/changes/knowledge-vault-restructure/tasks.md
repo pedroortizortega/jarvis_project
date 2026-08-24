@@ -9,12 +9,12 @@
 | Chained PRs recommended | Yes |
 | Suggested split | PR 1 → PR 2 → PR 3 → PR 4 → PR 5 |
 | Delivery strategy | ask-on-risk |
-| Chain strategy | pending (user decision needed) |
+| Chain strategy | 5 chained PRs, each targeting the previous branch (as delivered: PR1 search scope, PR2 propose/decide lifecycle, PR3 promote/sync, PR4 units/installer/migration, PR5 docs/skill/spec sync) |
 
-Decision needed before apply: Yes
+Decision needed before apply: No — resolved; all 5 PRs landed
 Chained PRs recommended: Yes
-Chain strategy: pending
-400-line budget risk: High
+Chain strategy: resolved (5 chained PRs, delivered)
+400-line budget risk: High (materialized on PRs 2-3; absorbed via the chain, no further split needed)
 
 ### Suggested Work Units
 
@@ -82,8 +82,10 @@ Chain strategy: pending
 
 ## Phase 5: Docs, skill, spec sync (PR 5)
 
-- [ ] 5.1 `skills/propose-note/SKILL.md`: imperative `pending/`-only rule; submission block uses `KNOWLEDGE_VAULT_DIR`.
-- [ ] 5.2 `docs/services/knowledge-vault.md`: rewrite pipeline diagram, unit table (6→3), safety model, env table.
-- [ ] 5.3 `smoke/verify_vault.py`: replace publisher/review-cycle checks with propose→decide→promote.
-- [ ] 5.4 Sync `specs/023_knowledge_vault_restructure.md` §2 D-03/D-04 wording to match design.md's amended unattended-timer promotion (currently still says human-triggered per-id).
-- [ ] 5.5 Run full suite (`python -m unittest discover -s tests`); confirm green end-to-end.
+- [x] 5.1 `skills/propose-note/SKILL.md`: imperative `pending/`-only rule; submission block uses `KNOWLEDGE_VAULT_DIR`.
+- [x] 5.2 `docs/services/knowledge-vault.md`: rewrite pipeline diagram, unit table (6→3), safety model, env table.
+- [x] 5.3 `smoke/verify_vault.py`: replace publisher/review-cycle checks with propose→decide→promote.
+- [x] 5.4 Sync `specs/023_knowledge_vault_restructure.md` §2 D-03/D-04 wording to match design.md's amended unattended-timer promotion (currently still says human-triggered per-id).
+- [x] 5.5 Run full suite (`python -m unittest discover -s tests`); confirm green end-to-end.
+- [x] 5.6 Sync `openspec/changes/knowledge-vault-restructure/specs/knowledge-vault-note-lifecycle/spec.md`'s promotion-trigger requirement to the unattended-timer model and add the D-13 self-approval-risk requirement (search-bridge delta spec did not describe promotion mechanics; left as-is).
+- [x] 5.7 Fix stale `publisher.py` reference in `serve.py`'s module docstring found during the final dangling-reference grep.

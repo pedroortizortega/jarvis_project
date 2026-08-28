@@ -12,6 +12,13 @@ WorkingDirectory=/opt/knowledge-vault/tree
 Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/tree
 Environment=KNOWLEDGE_VAULT_REMOTE=/srv/git/knowledge-vault.git
 Environment=KNOWLEDGE_VAULT_BRANCH=main
+# ProtectHome=yes blocks /home entirely, but the account's passwd entry
+# still names /home/knowledge-vault-sync as its home directory (useradd
+# --no-create-home sets the field without creating the path) — left
+# unset, git falls back to that unreachable path for its own optional
+# global config/attributes lookups. Pointed inside the sandbox instead so
+# nothing git does ever needs a path outside what's already granted.
+Environment=HOME=/opt/knowledge-vault/tree
 ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-sync
 
 # sync stages/commits/pushes pending/ only — knowledge/ is promote's alone
@@ -21,7 +28,14 @@ ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-sync
 # (GitSync._pending() pathspecs "-- pending") so the property holds under
 # test too, not just under this unit file. The "-" prefix on the lock file
 # tolerates a fresh tree on the very first run (layout.vault_lock()).
-ReadWritePaths=/opt/knowledge-vault/tree/.git /opt/knowledge-vault/tree/pending -/opt/knowledge-vault/tree/.vault.lock
+#
+# Found live on trantor: /srv/git/knowledge-vault.git (KNOWLEDGE_VAULT_REMOTE
+# above) was missing here entirely. Under ProtectSystem=strict every path
+# not listed is read-only, so the very first real `git push` — with
+# nothing to push, prior runs never exercised this at all — failed outright
+# ("unable to create temporary object directory") the moment there was
+# finally real content to push.
+ReadWritePaths=/opt/knowledge-vault/tree/.git /opt/knowledge-vault/tree/pending -/opt/knowledge-vault/tree/.vault.lock /srv/git/knowledge-vault.git
 ReadOnlyPaths=/opt/knowledge-vault/tree/knowledge
 
 NoNewPrivileges=yes

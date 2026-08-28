@@ -13,6 +13,13 @@ Environment=KNOWLEDGE_VAULT_DIR=/opt/knowledge-vault/tree
 Environment=KNOWLEDGE_VAULT_INDEX=/var/lib/knowledge-vault/index/index.json
 Environment=KNOWLEDGE_VAULT_REMOTE=/srv/git/knowledge-vault.git
 Environment=KNOWLEDGE_VAULT_BRANCH=main
+# ProtectHome=yes blocks /home entirely, but the account's passwd entry
+# still names /home/knowledge-vault-promote as its home directory (useradd
+# --no-create-home sets the field without creating the path) — left
+# unset, git falls back to that unreachable path for its own optional
+# global config/attributes lookups. Pointed inside the sandbox instead so
+# nothing git does ever needs a path outside what's already granted.
+Environment=HOME=/opt/knowledge-vault/tree
 ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-promote
 
 # promote is the sole writer to knowledge/ (D-04): the pending/ -> knowledge/
@@ -22,7 +29,11 @@ ExecStart=/opt/knowledge-vault/.venv/bin/knowledge-vault-promote
 # (layout.vault_lock() -> <tree>/.vault.lock, not a separate state file) —
 # the "-" prefix tolerates a fresh tree where the lock file does not exist
 # yet on the very first run. build_index() (D-07) writes the index dir.
-ReadWritePaths=/opt/knowledge-vault/tree/.git /opt/knowledge-vault/tree/knowledge /opt/knowledge-vault/tree/pending -/opt/knowledge-vault/tree/.vault.lock /var/lib/knowledge-vault/index /var/lib/knowledge-vault/state
+#
+# Found live on trantor: /srv/git/knowledge-vault.git (KNOWLEDGE_VAULT_REMOTE
+# above) was missing here entirely — same gap as knowledge-vault-sync.service,
+# found there first when its push failed under real content.
+ReadWritePaths=/opt/knowledge-vault/tree/.git /opt/knowledge-vault/tree/knowledge /opt/knowledge-vault/tree/pending -/opt/knowledge-vault/tree/.vault.lock /var/lib/knowledge-vault/index /var/lib/knowledge-vault/state /srv/git/knowledge-vault.git
 
 NoNewPrivileges=yes
 PrivateTmp=yes

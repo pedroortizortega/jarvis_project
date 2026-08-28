@@ -185,19 +185,60 @@ if git_ show-ref --verify --quiet "refs/heads/pending" || \
   pending_ref="pending"
   git_ show-ref --verify --quiet "refs/heads/pending" || pending_ref="origin/pending"
   reconciled=0
+  # promote.py's NOTE_ID only ever accepts 14 digits (design.md Threat
+  # Matrix: "Path traversal via argv") — but the old JSON-pipeline's
+  # proposal_id was a UUID. A note reconciled under its original filename
+  # would sit in pending/ forever: promote_all() catches its NOTE_ID
+  # rejection as PromotionRefused and silently skips it every cycle,
+  # indistinguishable from "not reviewed yet" — found live when a UUID-id
+  # note that already had reviewer/decision/rationale filled in still
+  # never promoted. Mint a compliant id for any name that isn't already
+  # 14 digits; the note is still unpublished (never lived in knowledge/,
+  # nothing links to it yet), so renaming it here is safe, unlike Step 3's
+  # git mv of already-published notes which must never re-mint an id.
+  next_epoch="$(date -u +%s)"
+  mint_compliant_id() {
+    local candidate
+    while :; do
+      candidate="$(date -u -d "@$next_epoch" +%Y%m%d%H%M%S)"
+      next_epoch=$((next_epoch + 1))
+      [[ -f "$TREE/knowledge/$candidate.md" || -f "$TREE/pending/$candidate.md" ]] || break
+    done
+    printf '%s' "$candidate"
+  }
   while IFS= read -r name; do
     [[ "$name" == *.md ]] || continue
     [[ "$name" == "README.md" ]] && continue
     id="${name%.md}"
-    # Already promoted, or already reconciled by a previous run of this
-    # script — either way there is nothing left to do for this id.
-    if [[ -f "$TREE/knowledge/$name" || -f "$TREE/pending/$name" ]]; then
+    # Already reconciled by a previous run: either still under its
+    # original name (a compliant id needs no renaming and was matched by
+    # the check below in an earlier iteration/run), or already carrying
+    # a legacy_proposal_id marker recording this id was renamed once
+    # already — either way, nothing left to do.
+    if [[ -f "$TREE/knowledge/$name" || -f "$TREE/pending/$name" ]] || \
+       grep -qlr "^legacy_proposal_id: $id\$" "$TREE/pending" "$TREE/knowledge" 2>/dev/null; then
       continue
     fi
-    git_ show "$pending_ref:$name" > "$TREE/pending/$name"
-    git_ add -- "pending/$name"
+    target_name="$name"
+    content="$(git_ show "$pending_ref:$name")"
+    if [[ ! "$id" =~ ^[0-9]{14}$ ]]; then
+      new_id="$(mint_compliant_id)"
+      target_name="$new_id.md"
+      # proposal_id is always the first frontmatter line (note.render()'s
+      # FIELD_ORDER) — swap it for the new id and record the old one so a
+      # future run recognizes this id was already reconciled (see the
+      # skip check above), and so the audit trail keeps the origin
+      # traceable rather than silently discarding it. `0,/re/{...}` (GNU
+      # sed) applies the substitution only to the FIRST matching line, in
+      # case a hostile or malformed note repeats the key deeper in the
+      # body.
+      content="$(printf '%s\n' "$content" | sed "0,/^proposal_id: /{s/^proposal_id: .*/proposal_id: $new_id\nlegacy_proposal_id: $id/}")"
+      say "renamed pending/$name -> pending/$target_name (legacy UUID id, promote.py only accepts 14 digits)"
+    fi
+    printf '%s\n' "$content" > "$TREE/pending/$target_name"
+    git_ add -- "pending/$target_name"
     reconciled=$((reconciled + 1))
-    say "reconciled pending/$name (id $id) from the frozen pending branch"
+    say "reconciled pending/$target_name (id $id) from the frozen pending branch"
   done < <(git_ ls-tree -r --name-only "$pending_ref" 2>/dev/null || true)
   say "$reconciled note(s) reconciled; refs/heads/pending left frozen, not deleted (D-11)"
   commit_staged "Migrate: reconcile $reconciled note(s) from the frozen pending branch (includes any staged from an interrupted prior run)"

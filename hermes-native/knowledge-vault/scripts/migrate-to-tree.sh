@@ -21,7 +21,15 @@ BRANCH="${KNOWLEDGE_VAULT_BRANCH:-main}"
 
 say() { printf '  %s\n' "$*"; }
 
+# Same identity layout.GIT_IDENTITY sets for promote.py/sync.py's commits —
+# the promote system account has no HOME (useradd --no-create-home,
+# install-host.sh) and so no git config of its own; without an explicit
+# identity every commit in this script fails with "Please tell me who you
+# are" the first time it's run.
 git_() {
+  GIT_AUTHOR_NAME=knowledge-vault GIT_AUTHOR_EMAIL=knowledge-vault@localhost \
+  GIT_COMMITTER_NAME=knowledge-vault GIT_COMMITTER_EMAIL=knowledge-vault@localhost \
+  GIT_TERMINAL_PROMPT=0 \
   git -C "$TREE" -c safe.directory="$TREE" "$@"
 }
 

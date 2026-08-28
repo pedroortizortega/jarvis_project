@@ -120,6 +120,23 @@ chmod -R o=,g+rwX /srv/git/knowledge-vault.git
 say "/srv/git/knowledge-vault.git"
 say "$PREFIX/tree/{knowledge,pending}, $STATE/{index,state}"
 
+# knowledge-vault-search.service's LoadCredential=search-token:... only reads
+# this file at unit start — nothing ever created it. Reproduced live on
+# trantor: the unit crash-looped until an operator generated it by hand
+# (openssl rand + chown + chmod). Idempotent: never overwrites an existing
+# token, since that would silently invalidate every client already holding
+# the old one.
+CONFIG_DIR=/etc/knowledge-vault
+TOKEN_FILE="$CONFIG_DIR/search-token"
+install -d -m 0750 -o root -g "$GROUP" "$CONFIG_DIR"
+if [[ ! -f "$TOKEN_FILE" ]]; then
+  install -m 0440 -o root -g "$GROUP" /dev/null "$TOKEN_FILE"
+  openssl rand -hex 32 > "$TOKEN_FILE"
+  say "generated $TOKEN_FILE"
+else
+  say "$TOKEN_FILE already exists, left untouched"
+fi
+
 echo "Package"
 if [[ ! -x "$PREFIX/.venv/bin/python" ]]; then
   python3 -m venv "$PREFIX/.venv"

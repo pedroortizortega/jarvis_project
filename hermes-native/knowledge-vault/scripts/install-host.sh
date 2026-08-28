@@ -60,6 +60,19 @@ echo "Directories"
 # repo's own system user, outside this package's scope) and the human
 # reviewer both write there.
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX" "$PREFIX/tree"
+# Declared here, not just inline via `-c safe.directory=...` on one-off
+# commands: knowledge-vault-sync.service and knowledge-vault-search.service
+# run as their OWN system accounts (not $PROMOTE_USER, which owns this
+# directory), with ProtectHome=yes and no .gitconfig of their own (their
+# $HOME is $PREFIX/tree itself since PR #71, but nothing populates it with
+# one). Without a standing trust declaration every git invocation those
+# units make against this tree fails: "fatal: detected dubious ownership in
+# repository at '$PREFIX/tree'". Reproduced live on trantor against
+# knowledge-vault-sync.service, fixed by hand with this exact command before
+# being folded in here. --system (not --global): no account here has a
+# reachable $HOME for --global to write to, and root already owns this
+# script (EUID -ne 0 check above).
+git config --system --add safe.directory "$PREFIX/tree"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 0750 "$PREFIX/tree/knowledge"
 install -d -o "$PROMOTE_USER" -g "$GROUP" -m 2770 "$PREFIX/tree/pending"
 # The tree root itself is 0750 (read-write only to promote:group, not
@@ -89,6 +102,19 @@ fi
 git --git-dir=/srv/git/knowledge-vault.git \
   -c safe.directory=/srv/git/knowledge-vault.git \
   config core.sharedRepository group
+# Same dubious-ownership failure mode as $PREFIX/tree above, but for the
+# bare repo: it's chown'd to $PROMOTE_USER just below, yet sync.py pushes to
+# it directly (`git push`) as the knowledge-vault-sync account — a
+# different UID than the owner. Hasn't surfaced yet on trantor only because
+# sync has had nothing to push so far (every run so far logged "0 note(s)
+# synced"), but it's the identical bug shape as $PREFIX/tree, fixed here
+# preemptively rather than waiting for a fourth "found live on trantor"
+# commit (PR #71 fixed the sibling ReadWritePaths= bug for the same reason:
+# nobody had exercised the real-push path yet). The `-c safe.directory=...`
+# above only scopes trust to that one `config core.sharedRepository`
+# invocation, not to later runs by other accounts — this is the standing,
+# system-wide declaration every account needs.
+git config --system --add safe.directory /srv/git/knowledge-vault.git
 chown -R "$PROMOTE_USER:$GROUP" /srv/git/knowledge-vault.git
 chmod -R o=,g+rwX /srv/git/knowledge-vault.git
 say "/srv/git/knowledge-vault.git"

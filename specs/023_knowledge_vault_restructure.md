@@ -235,9 +235,9 @@ se destruye por un rollback.
 - [x] Alcance de búsqueda documentado como allowlist por construcción, con
   escenarios explícitos para `pending/` y una carpeta de tercer nivel
 - [x] Hechos de código verificados (no asumidos) que este change debe manejar
-- [ ] Diseño (`sdd-design`)
-- [ ] Tareas (`sdd-tasks`)
-- [ ] Implementación (`sdd-apply`)
+- [x] Diseño (`sdd-design`)
+- [x] Tareas (`sdd-tasks`)
+- [x] Implementación (`sdd-apply`)
 
 ---
 

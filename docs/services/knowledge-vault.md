@@ -56,7 +56,7 @@ agent (JARVIS)                        human (Obsidian / editor)
            reviewer + decision: approved + rationale, skips the rest
            without error (D-04)
                      │
-                     ├─► git mv pending/<id>.md knowledge/<id>.md  (id preserved)
+                     ├─► moves pending/<id>.md to knowledge/<id>.md  (id preserved)
                      ├─► strips reviewer/decision/rationale, records them
                      │   in the commit message instead (git history = audit trail)
                      ├─► rebuilds the search index

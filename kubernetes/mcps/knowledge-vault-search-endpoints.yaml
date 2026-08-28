@@ -1,8 +1,10 @@
 # knowledge-vault-search — selector-less Service + manually-managed
-# EndpointSlice pointing at the host's cni0 gateway address (design.md D-06).
-# NOT YET APPLIED — same posture as the rest of kubernetes/mcps. Reachable
-# only from pods on this node; 10.42.0.1 is flannel-specific (design.md Open
-# Questions) and never resolves from the LAN.
+# EndpointSlice pointing at the host's cni0 gateway address (design.md D-06,
+# specs/024 D-01). About to be applied as part of the knowledge-vault-search-
+# deployment change — see kubernetes/mcps/bootstrap/05-deploy-manifests.sh.
+# Reachable only from pods on this node; 10.42.0.1 is flannel-specific,
+# accepted as a documented single-node constraint (specs/024 §"Node-locality
+# coupling"), and never resolves from the LAN.
 apiVersion: v1
 kind: Service
 metadata:

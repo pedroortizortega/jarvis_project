@@ -98,6 +98,17 @@ spec:
                   key: tenant-api-key
             - name: HINDSIGHT_AUTH_MODE
               value: "bearer"
+            # knowledge-vault-search-deployment (SDD change): bearer auth
+            # against the deployed knowledge-vault search bridge. No
+            # KNOWLEDGE_VAULT_BASE_URL override — the adapter's fixed default
+            # already resolves to this Service (design.md D-06).
+            - name: KNOWLEDGE_VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: knowledge-vault-search-token
+                  key: search-token
+            - name: KNOWLEDGE_VAULT_AUTH_MODE
+              value: "bearer"
           volumeMounts:
             - name: journal
               mountPath: /data

@@ -243,8 +243,11 @@ knowledge-vault-search.service` y eliminar la unidad; el vault, su
 datos, sin estado almacenado, sin escrituras que deshacer.
 
 **Preguntas abiertas (sin resolver, no bloqueantes para merge):**
-- El deadline de rebuild de 5s es un valor de partida, no medido — nadie
-  cronometró `build_index` contra el `/opt/knowledge-vault/vault` real.
+- El deadline de rebuild de 5s es un valor de partida — la medición contra
+  el `/opt/knowledge-vault/tree` real (cold/warm, `build_index`) está
+  diseñada (design.md D-04 de `knowledge-vault-search-deployment`) pero
+  requiere ejecutarse en `trantor`; pendiente, seguimiento en
+  `specs/024_knowledge_vault_search_deployment.md` §6.
 - mTLS si el router alguna vez se mueve fuera de `trantor` — D-06 es
   correcto solo mientras ambos lados comparten el nodo.
 - `10.42.0.1` es específico de flannel — verificado desde
@@ -304,7 +307,13 @@ datos, sin estado almacenado, sin escrituras que deshacer.
   ver §8.1
 - [ ] Despliegue real de `serve.py` como servicio persistente — sigue
   sin ejecutarse; esta validación corrió el proceso a mano, en primer
-  plano, contra el vault real en disco
+  plano, contra el vault real en disco. Manifiestos, wiring de secreto y
+  tests están listos (`kubernetes/mcps/knowledge-vault-search-endpoints.yaml`,
+  `03-create-secrets.sh` bloque 7, `tests/test_knowledge_vault_search_manifest.py`)
+  pero el `systemctl enable --now` real en `trantor`, el `kubectl apply`
+  al clúster, y la validación E2E en vivo requieren acceso root/kubectl que
+  este agente no tiene — **bloqueado en la habilitación real del host,
+  seguimiento en `specs/024_knowledge_vault_search_deployment.md`**
 
 ---
 

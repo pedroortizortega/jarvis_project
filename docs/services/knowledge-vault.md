@@ -342,6 +342,80 @@ group and gets the `propose-note` skill installed into
 script prints a warning that "nobody can write decisions yet" — it still
 installs everything else.
 
+## Search deployment (in-cluster bridge)
+
+`knowledge-vault-search.service` is the one unit reachable from Kubernetes —
+everything else in this doc stays purely host-side. It is meant to run
+**enabled and persistent** on `trantor` (`systemctl enable --now`), not
+started by hand: `install-host.sh` provisions the credential
+(`/etc/knowledge-vault/search-token`, `root:$GROUP`, `0440`,
+`openssl rand -hex 32`, never overwritten if it already exists) but does not
+enable the unit itself — the same "install-and-verify, not
+install-and-enable" posture as `sync`/`promote`.
+
+In-cluster reachability is a selector-less, headless `Service` +
+manually-managed `EndpointSlice` in `mcps`
+(`kubernetes/mcps/knowledge-vault-search-endpoints.yaml`) pointing at
+`10.42.0.1:8088` — the host's `cni0` gateway address on the single-node
+flannel CNI `trantor` runs today. This is an accepted, documented
+constraint, not an oversight: it couples the bridge's reachability to two
+things staying true — no CNI change, and memory-router staying scheduled on
+this same node. Either one changing invalidates `10.42.0.1` and is a
+breaking change requiring a manifest update, not a network-layer surprise.
+A manifest test asserts the address so any change is deliberate
+(`tests/test_knowledge_vault_search_manifest.py`). See
+`specs/024_knowledge_vault_search_deployment.md` for the full deployed
+contract, including the live-deployment evidence (`is-enabled`/`is-active`/
+`NRestarts`/journal/`ss`, pre- and post-reboot).
+
+memory-router reaches the bridge via `KNOWLEDGE_VAULT_TOKEN` (a
+`secretKeyRef` into the `knowledge-vault-search-token` Secret, never an
+inline value) and `KNOWLEDGE_VAULT_AUTH_MODE=bearer`
+(`kubernetes/mcps/memory-router-deployment.yaml`). No
+`KNOWLEDGE_VAULT_BASE_URL` override — the adapter's default already names
+`knowledge-vault-search.mcps.svc.cluster.local:8088`.
+
+### Token rotation runbook
+
+The host file (`/etc/knowledge-vault/search-token`) is the single source of
+truth; the Kubernetes Secret is a **mirror only** — nothing ever
+regenerates the token from the cluster side
+(`kubernetes/mcps/bootstrap/03-create-secrets.sh` block 7). Rotation is a
+manual, ordered, four-step runbook, not automated (design.md D-03 of
+`knowledge-vault-search-deployment`) — it touches three independently
+managed boundaries (host file, systemd, k8s Secret), which is more moving
+parts to automate than the failure it would prevent:
+
+1. **Regenerate the host credential**:
+   ```bash
+   sudo openssl rand -hex 32 | sudo tee /etc/knowledge-vault/search-token >/dev/null
+   sudo chmod 0440 /etc/knowledge-vault/search-token
+   ```
+2. **Restart the unit so it re-reads the new credential**:
+   ```bash
+   sudo systemctl restart knowledge-vault-search.service
+   ```
+3. **Re-run the secret-mirroring script** so the `mcps` Secret matches the
+   new host file (recreates the Secret, does not regenerate the token):
+   ```bash
+   kubernetes/mcps/bootstrap/03-create-secrets.sh
+   ```
+4. **Roll memory-router** so its pod picks up the refreshed Secret (env
+   vars are not live-reloaded) and confirm a real hit:
+   ```bash
+   kubectl -n mcps rollout restart deploy/memory-router
+   kubectl -n mcps rollout status deploy/memory-router
+   # then issue a /global search matching curated vault content and
+   # confirm a hit with backend == "knowledge-vault"
+   ```
+
+Steps 2 and 4 both re-read the credential from their own side; between them
+`/global` degrades to Engram-only (the adapter raises
+`BackendUnavailableError` on a `401` and the dispatcher degrades over it),
+which is the pre-change baseline, not an outage. Running the steps out of
+order (e.g. rolling memory-router before re-running step 3) produces the
+same degrade, self-correcting once the remaining step runs.
+
 ## Running it locally / tests
 
 ```bash

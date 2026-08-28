@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Create the 6 memory-router / hindsight secrets in $MR_NAMESPACE. None of these are
+# Create the 7 memory-router / hindsight / knowledge-vault secrets in
+# $MR_NAMESPACE. None of these are
 # ever committed to the repo (kubernetes/mcps/memory-router-*.yaml only
 # references them by name) — this script is the reproducible record of how
 # they were built, not a store of their values.
@@ -99,4 +100,21 @@ kubectl -n "$MR_NAMESPACE" create secret generic hindsight-codex-shim-key \
   --from-literal=internal-key="$HINDSIGHT_CODEX_SHIM_KEY" \
   --dry-run=client -o yaml | apply_secret
 
-log "All 6 secrets applied in namespace $MR_NAMESPACE"
+# 7) knowledge-vault-search-token — the shared bearer between memory-router
+# (KNOWLEDGE_VAULT_TOKEN) and the knowledge-vault search bridge on trantor.
+# design.md D-02/F-3: the host file is the single source of truth
+# (written once by install-host.sh); this script only mirrors it into the
+# Secret and never generates a token itself — aborts loudly if the host
+# file is missing/unreadable/empty rather than creating an empty Secret.
+: "${KV_SEARCH_TOKEN_FILE:=/etc/knowledge-vault/search-token}"
+KV_SEARCH_TOKEN=$(cat "$KV_SEARCH_TOKEN_FILE" 2>/dev/null || true)
+if [ -z "$KV_SEARCH_TOKEN" ]; then
+  log "No token at $KV_SEARCH_TOKEN_FILE (run install-host.sh on trantor first) — aborting"
+  exit 1
+fi
+log "Creating knowledge-vault-search-token (mirrored from $KV_SEARCH_TOKEN_FILE)"
+kubectl -n "$MR_NAMESPACE" create secret generic knowledge-vault-search-token \
+  --from-literal=search-token="$KV_SEARCH_TOKEN" \
+  --dry-run=client -o yaml | apply_secret
+
+log "All 7 secrets applied in namespace $MR_NAMESPACE"

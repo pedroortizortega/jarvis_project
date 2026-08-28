@@ -269,10 +269,16 @@ solo puerto propio).
 - [x] Adaptador Engram (`backends/engram.py`) — `argv`/`env` fijos, degradación explícita, con test
 - [x] App: dispatcher + REST + shim MCP + `/memory/reflect` = 501 (`app.py`), con test, incluida paridad MCP/REST
 - [x] `pyproject.toml`: grupo de entry points `memory_router.backends` + console scripts
-- [x] Manifiestos `kubernetes/mcps/memory-router-*.yaml` (6 archivos) — aplicados a `mcps` (2026-08-21)
+- [x] Manifiestos `kubernetes/mcps/memory-router-*.yaml` (6 archivos) — aplicados a `mcps` (2026-08-21). Auditoría D-08 (2026-08-27): el conteo de manifiestos aplicados por `bootstrap/05-deploy-manifests.sh` creció a **10 archivos** desde entonces — 6 de memory-router más `hindsight-pvc.yaml`/`hindsight-deployment.yaml`/`hindsight-service.yaml` (spec 022) y `knowledge-vault-search-endpoints.yaml` (spec 024) — ver `kubernetes/mcps/bootstrap/README.md`.
 - [x] Despliegue real a clúster — pod `Running`, `/healthz` 200 vía port-forward y vía Ingress con mTLS real, control negativo confirmado (§8)
 - [x] Onboarding real de los 4 clientes sobre el router — `pedro-claude-code`, `codex`, `opencode`, `hermes-gateway` probados end-to-end (cert + bearer), los 4 responden `/healthz` 200 vía Ingress con mTLS
-- [ ] Adaptadores de backend #2–6 (Hindsight, Graphiti, Honcho, Cognee, Obsidian) — fuera de alcance de esta fase
+- Adaptadores de backend #2–6 — auditoría por backend (D-08, `specs/024` §"specs/014 §9 audit", 2026-08-27), reemplaza la línea única anterior que trataba los 5 como una unidad y nombraba incorrectamente "Obsidian" (el módulo/adaptador real es `knowledge-vault`):
+  - [x] Engram — adaptador + desplegado (ver arriba, ya verdadero)
+  - [x] Hindsight — adaptador + **desplegado y en vivo**, ver `specs/022_hindsight_deployment.md`
+  - [ ] Graphiti — adaptador completo, despliegue pendiente
+  - [ ] Honcho — adaptador completo, despliegue pendiente
+  - [ ] Cognee — adaptador completo, despliegue pendiente
+  - [ ] knowledge-vault (antes nombrado incorrectamente "Obsidian") — adaptador completo; manifiestos, secreto y tests de este change listos; despliegue real (`systemctl enable --now` en `trantor`, `kubectl apply`, validación E2E) pendiente de acceso root/kubectl en vivo, seguimiento en `specs/024_knowledge_vault_search_deployment.md`
 
 ---
 

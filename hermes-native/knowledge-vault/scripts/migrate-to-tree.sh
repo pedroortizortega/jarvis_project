@@ -85,6 +85,27 @@ else
 fi
 git_ config core.sharedRepository group
 say "core.sharedRepository=group"
+# core.sharedRepository=group only widens permissions on files git creates
+# AFTER it's set — it does not retroactively fix .git/config, .git/HEAD,
+# .git/index, or the objects/refs `init`/`fetch`/`reset --hard` above just
+# created, all under whatever umask the invoking shell had. This script runs
+# interactively (`sudo -u knowledge-vault-promote ...`, umask 022), not
+# under the systemd units' UMask=0027, so those files come out too narrow.
+# Reproduced live: .git/config ended up mode 644 (owner rw, no group
+# write); knowledge-vault-sync.service then failed to write
+# refs/remotes/origin/main.lock with "Permiso denegado", which
+# _adopt_remote()'s `remote remove origin --check=False` swallowed silently,
+# surfacing downstream as the misleading "remote origin already exists"
+# instead of a permissions error. Unconditional and idempotent, same as the
+# config line above it, so a repo that predates this fix (the "else" branch
+# below) also gets repaired on its next run. `g+rwX` (capital X) only adds
+# execute to directories/already-executable files, never makes a plain file
+# spuriously executable; the `find ... g+s` re-applies setgid to every
+# existing directory as belt-and-suspenders alongside
+# core.sharedRepository=group, which only sets it on directories created
+# from here on, not ones that already existed before the config took effect.
+chmod -R g+rwX "$TREE/.git"
+find "$TREE/.git" -type d -exec chmod g+s {} +
 # Belt-and-suspenders for a host where install-host.sh ran before this file
 # existed there: promote/sync's systemd sandbox can write TO .vault.lock but
 # not CREATE it (their ReadWritePaths= never lists the tree root itself), so

@@ -79,13 +79,13 @@ say "$TREE/{knowledge,pending}"
 shopt -s nullglob
 root_notes=("$TREE"/*.md)
 shopt -u nullglob
+moved=0
 if [[ ${#root_notes[@]} -gt 0 ]]; then
   # git mv only — no id is ever re-minted, file names stay byte-for-byte,
   # so every intra-vault link keeps resolving (design.md step 3). One file
   # at a time, not a single `git mv -- *.md knowledge/`, so a re-run after
   # a partial previous move never fails on a name already present in
   # knowledge/.
-  moved=0
   for path in "${root_notes[@]}"; do
     name="$(basename "$path")"
     if [[ -f "$TREE/knowledge/$name" ]]; then
@@ -95,12 +95,22 @@ if [[ ${#root_notes[@]} -gt 0 ]]; then
     git_ mv -- "$name" "knowledge/$name"
     moved=$((moved + 1))
   done
-  if [[ "$moved" -gt 0 ]]; then
-    git_ commit -q -m "Migrate: move $moved published note(s) into knowledge/"
-  fi
   say "moved $moved note(s) into knowledge/"
 else
   say "no root-level *.md left to move"
+fi
+# `git mv` and `git commit` are two separate steps (not atomic): a run that
+# gets interrupted between them — or, as found live on trantor, one whose
+# commit failed for an unrelated reason (no git identity, before the fix
+# in this same file) — leaves a rename staged but never committed. Because
+# root_notes above only globs the *working tree*, a later run sees the
+# file already physically in knowledge/ and reports "nothing to move",
+# silently leaving that staged rename uncommitted forever. Committing
+# whatever is staged here, unconditionally (not gated on $moved > 0 from
+# *this* run), picks up exactly that resumed case as well as the normal
+# one.
+if ! git_ diff --cached --quiet; then
+  git_ commit -q -m "Migrate: move $moved published note(s) into knowledge/ (includes any staged from an interrupted prior run)"
 fi
 
 echo "Step 4: drift check against the old flat vault"
@@ -117,9 +127,12 @@ if [[ -d "$OLD_VAULT" ]]; then
       missing=$((missing + 1))
     fi
   done
-  if [[ "$missing" -gt 0 ]]; then
-    git_ commit -q -m "Migrate: copy $missing note(s) the mirror had not pushed yet"
-    say "copied $missing note(s) not yet reflected in $TREE"
+  say "copied $missing note(s) not yet reflected in $TREE"
+  # Same resume gap as Step 3 (see its comment): commit whatever is
+  # actually staged, not just what this run counted, so an interrupted
+  # prior run's staged-but-uncommitted copy gets picked up too.
+  if ! git_ diff --cached --quiet; then
+    git_ commit -q -m "Migrate: copy $missing note(s) the mirror had not pushed yet (includes any staged from an interrupted prior run)"
   fi
   # Gate: every note the old flat vault has must now exist, byte-identical,
   # in knowledge/ — "$TREE/knowledge" may contain more (subfolders, notes
@@ -172,10 +185,11 @@ if git_ show-ref --verify --quiet "refs/heads/pending" || \
     reconciled=$((reconciled + 1))
     say "reconciled pending/$name (id $id) from the frozen pending branch"
   done < <(git_ ls-tree -r --name-only "$pending_ref" 2>/dev/null || true)
-  if [[ "$reconciled" -gt 0 ]]; then
-    git_ commit -q -m "Migrate: reconcile $reconciled note(s) from the frozen pending branch"
-  fi
   say "$reconciled note(s) reconciled; refs/heads/pending left frozen, not deleted (D-11)"
+  # Same resume gap as Steps 3/4: commit whatever is actually staged.
+  if ! git_ diff --cached --quiet; then
+    git_ commit -q -m "Migrate: reconcile $reconciled note(s) from the frozen pending branch (includes any staged from an interrupted prior run)"
+  fi
 else
   say "no pending branch on the remote, nothing to reconcile"
 fi

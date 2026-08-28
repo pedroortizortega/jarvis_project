@@ -109,10 +109,20 @@ class GitSync:
             self._adopt_remote()
             layout.pending_root(self.vault_directory).mkdir(parents=True, exist_ok=True)
             changed = self._pending()
-            if not changed:
-                return []
-            self._commit(len(changed))
+            if changed:
+                self._commit(len(changed))
             if self.remote:
+                # Unconditional, not gated on `changed`: a prior run's
+                # commit can exist locally but have never reached the
+                # remote (a transient push failure — found live: sync's
+                # own systemd sandbox once lacked ReadWritePaths= on the
+                # bare repo, PR #71), leaving a clean working tree with
+                # nothing new to stage. Without this, that commit would
+                # never be retried by any future run — `_pending()` would
+                # keep reporting nothing to do forever. `git push` with
+                # nothing new to send is a safe no-op ("Everything
+                # up-to-date"), so attempting it every run is what makes an
+                # earlier failed push actually self-heal on the next cycle.
                 self._git("push", "-q", "--set-upstream", "origin", self.branch)
             return changed
 

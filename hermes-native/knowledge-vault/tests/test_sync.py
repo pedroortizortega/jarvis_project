@@ -145,6 +145,41 @@ class SyncTests(unittest.TestCase):
             sync.sync()
             self.assertIn("p1.md", git(remote, "ls-tree", "--name-only", "-r", "main"))
 
+    def test_an_unpushed_commit_with_nothing_new_is_still_retried(self):
+        """Found live: a prior push failure (e.g. the sandbox once lacking
+        ReadWritePaths= on the bare repo — PR #71) leaves a commit sitting
+        locally, unpushed, with a clean working tree. Before this fix,
+        _pending() reporting nothing NEW meant sync() never even tried to
+        push again — the commit would sit there forever. It must be
+        retried every run regardless of whether this run staged anything."""
+        with tempfile.TemporaryDirectory() as root:
+            remote = Path(root) / "remote.git"
+            subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+            sync, tree = self.setup(root)
+            sync.remote = str(remote)
+            # Simulate the failed-push state directly: commit locally, but
+            # never push (skip calling sync(), which would push).
+            sync._ensure_repo()
+            sync._git("add", "--", layout.PENDING_DIRNAME)
+            sync._git("commit", "-q", "-m", "Sync 1 pending note")
+            self.assertEqual(
+                1,
+                subprocess.run(
+                    ["git", "show-ref", "--verify", "--quiet", "refs/heads/main"],
+                    cwd=remote,
+                ).returncode,
+                "remote must start with no main ref — nothing has been pushed yet",
+            )
+
+            changed = sync.sync()  # nothing new staged this run
+
+            self.assertEqual([], changed, "no new pending changes this run")
+            self.assertIn(
+                "p1.md",
+                git(remote, "ls-tree", "--name-only", "-r", "main"),
+                "the earlier unpushed commit must still reach the remote",
+            )
+
     def test_it_adopts_a_remote_that_already_has_history(self):
         with tempfile.TemporaryDirectory() as root:
             remote = Path(root) / "remote.git"

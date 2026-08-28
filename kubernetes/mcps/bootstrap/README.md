@@ -10,9 +10,9 @@ Use this to bring memory-router up from zero on a new machine/cluster.
 00-config.sh                    # shared env vars — sourced, not run directly
 01-build-image.sh                # docker build + k3s ctr images import (needs sudo)
 02-generate-pki.sh                # own CA, server cert (SAN = MR_HOST), client certs per identity
-03-create-secrets.sh              # the 6 k8s secrets (4 memory-router, wired from 02's PKI output, + 2 hindsight)
+03-create-secrets.sh              # the 7 k8s secrets (4 memory-router, wired from 02's PKI output, + 2 hindsight, + 1 knowledge-vault-search)
 04-deploy-traefik-entrypoint.sh   # dedicated Traefik entryPoint (restarts shared Traefik)
-05-deploy-manifests.sh            # the 9 memory-router-*.yaml + hindsight-*.yaml manifests
+05-deploy-manifests.sh            # the 10 memory-router-*.yaml + hindsight-*.yaml + knowledge-vault-search-endpoints.yaml manifests
 06-verify.sh                      # port-forward healthz + mTLS+bearer per identity + negative control
 ```
 
@@ -109,4 +109,8 @@ actually enforced, not just configured.
   against a real instance — still an explicit follow-up in each of their
   specs (016-019), tested so far only against a stubbed HTTP transport.
   Hindsight is validated end-to-end against a real deployed instance —
-  see `specs/022_hindsight_deployment.md` §8.1.
+  see `specs/022_hindsight_deployment.md` §8.1. knowledge-vault's manifest
+  and secret wiring are applied by this bootstrap sequence, but live
+  end-to-end validation against the real host bridge is tracked in
+  `specs/024_knowledge_vault_search_deployment.md` and gated on the host
+  enable step (root access on `trantor`, outside this bootstrap script).

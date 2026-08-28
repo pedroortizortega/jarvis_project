@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Apply the 9 memory-router + hindsight manifests in dependency order.
-# Secrets referenced by name (memory-router-engram-credentials,
-# memory-router-client-bearers, memory-router-server-tls,
-# memory-router-client-ca, hindsight-tenant-key, hindsight-codex-shim-key)
-# must already exist — run 03-create-secrets.sh first, or the Deployments
-# land in CreateContainerConfigError.
+# Apply the 10 memory-router + hindsight + knowledge-vault-search manifests
+# in dependency order. Secrets referenced by name
+# (memory-router-engram-credentials, memory-router-client-bearers,
+# memory-router-server-tls, memory-router-client-ca, hindsight-tenant-key,
+# hindsight-codex-shim-key, knowledge-vault-search-token) must already
+# exist — run 03-create-secrets.sh first, or the Deployments land in
+# CreateContainerConfigError.
+#
+# knowledge-vault-search-endpoints.yaml is applied before
+# memory-router-deployment.yaml on purpose (design.md D-07/D-01 ordering):
+# the host bridge must be provably reachable before the router is told the
+# token, so a later router-side 401 can only mean token mismatch, never
+# "nothing is listening".
 #
 # memory-router-ingress.yaml hardcodes Host(`memory-router.trantor.tail07dff9.ts.net`)
 # and memory-router-deployment.yaml hardcodes image `memory-router:local` —
@@ -36,6 +43,7 @@ log "$MR_IMAGE_TAG is up to date with the current source (hash $CURRENT_HASH)"
 
 for f in memory-router-pvc.yaml \
          memory-router-configmap.yaml \
+         knowledge-vault-search-endpoints.yaml \
          memory-router-deployment.yaml \
          memory-router-service.yaml \
          memory-router-tlsoption.yaml \

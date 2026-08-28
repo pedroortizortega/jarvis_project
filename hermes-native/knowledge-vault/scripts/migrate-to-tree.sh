@@ -145,6 +145,14 @@ fi
 echo "Step 5: reconcile the frozen pending branch"
 # The pending branch is a read-then-copy, not a merge — it is left frozen,
 # never deleted (D-11). Nothing writes it after review-sync retired (D-01).
+#
+# Step 2 only ever fetches $BRANCH (main) — a local clone that has never
+# been told about the remote's `pending` branch has no
+# refs/remotes/origin/pending to check, so the existence test below would
+# always report "nothing to reconcile" even when the remote genuinely has
+# one. Fetch it explicitly here, tolerating its absence (a remote that was
+# never used for phone review, or one already past D-11 cleanup, has none).
+git_ fetch -q origin pending 2>/dev/null || true
 if git_ show-ref --verify --quiet "refs/heads/pending" || \
    git_ show-ref --verify --quiet "refs/remotes/origin/pending"; then
   pending_ref="pending"

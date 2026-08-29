@@ -220,6 +220,7 @@ __marimo__/
 # Local project credentials and embedded source checkouts
 .claude/config.txt
 kubernetes/docker/hermes-agent/
+hermes-native/vendor/hermes-agent/
 
 # Local skill-registry cache (per-machine, not project content)
 .atl/

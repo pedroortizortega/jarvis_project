@@ -1,4 +1,4 @@
-El siguiente listado total de skills disponibles de fábrica, usa tu criterio para saber cuando usar las sigueintes skills:
+El siguiente listado total de skills disponibles de fábrica, usa tu criterio para saber cuando usar las sigueintes skills, NUNCA cargues todas las skills al mismo tiempo:
 - $HERMES_HOME/skills/shared -> Contiene la estructura y convenciones de las skills para SDD
 - $HERMES_HOME/skills/apple -> Contiene las herramientas para escribir una nota, crear un recordatorio y crear un imessage en MacOS si tu OS es Linux o Windows descarta estas skills
 - $HERMES_HOME/skills/autonomous-agents -> Contiene las skills para mandar a llamar un subagente autónomo que realiza un búsqueda profunda (deep-research)

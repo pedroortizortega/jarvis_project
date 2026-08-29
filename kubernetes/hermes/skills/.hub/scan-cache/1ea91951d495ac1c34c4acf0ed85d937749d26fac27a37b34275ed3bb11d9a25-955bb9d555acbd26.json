@@ -1,0 +1,61 @@
+{
+  "source": "git-cli",
+  "source_url": "git-cli",
+  "bundle_hash": "sha256:1ea91951d495ac1c34c4acf0ed85d937749d26fac27a37b34275ed3bb11d9a25",
+  "scanner_version": "skills-guard-v1",
+  "verdict": "safe",
+  "trust_level": "community",
+  "findings": [
+    {
+      "pattern_id": "git_clone",
+      "severity": "medium",
+      "category": "supply_chain",
+      "file": "SKILL.md",
+      "line": 31,
+      "match": "| Clone / init | `git clone <url>` \u00b7 `git init` \u00b7 `git remote add origin <url>` |",
+      "description": "clones a git repository at runtime"
+    },
+    {
+      "pattern_id": "git_clone",
+      "severity": "medium",
+      "category": "supply_chain",
+      "file": "reference/commands.md",
+      "line": 119,
+      "match": "| `git clone <url>` | Clone into directory named from URL |",
+      "description": "clones a git repository at runtime"
+    },
+    {
+      "pattern_id": "git_clone",
+      "severity": "medium",
+      "category": "supply_chain",
+      "file": "reference/commands.md",
+      "line": 120,
+      "match": "| `git clone <url> <dir>` | Clone into `<dir>` |",
+      "description": "clones a git repository at runtime"
+    },
+    {
+      "pattern_id": "git_clone",
+      "severity": "medium",
+      "category": "supply_chain",
+      "file": "reference/commands.md",
+      "line": 121,
+      "match": "| `git clone --depth 1 <url>` | Shallow clone (single commit) |",
+      "description": "clones a git repository at runtime"
+    },
+    {
+      "pattern_id": "git_clone",
+      "severity": "medium",
+      "category": "supply_chain",
+      "file": "reference/troubleshooting.md",
+      "line": 11,
+      "match": "- Clone: `git clone <url>`.",
+      "description": "clones a git repository at runtime"
+    }
+  ],
+  "rules": [
+    "git_clone"
+  ],
+  "scanned_at": "2026-07-28T19:29:33.208541+00:00",
+  "summary": "git-cli: safe \u2014 5 finding(s) in supply_chain",
+  "fresh": true
+}

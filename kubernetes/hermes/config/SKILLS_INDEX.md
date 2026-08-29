@@ -1,0 +1,63 @@
+El siguiente listado total de skills disponibles de fábrica, usa tu criterio para saber cuando usar las sigueintes skills:
+- $HERMES_HOME/skills/shared -> Contiene la estructura y convenciones de las skills para SDD
+- $HERMES_HOME/skills/apple -> Contiene las herramientas para escribir una nota, crear un recordatorio y crear un imessage en MacOS si tu OS es Linux o Windows descarta estas skills
+- $HERMES_HOME/skills/autonomous-agents -> Contiene las skills para mandar a llamar un subagente autónomo que realiza un búsqueda profunda (deep-research)
+- $HERMES_HOME/skills/autonomous-ia-agents -> Contiene un listado de los agentes autónomos que pueden ser llamados para tareas en general incluyendo deep-research
+- $HERMES_HOME/skills/branch-pr -> Crea un Pull Request usando la cli de git
+- $HERMES_HOME/skills/chained-pr -> Desencandena PRs por arriba de 400 líneas
+- $HERMES_HOME/skills/cognitive-doc-design -> Crea guías, READMEs, arquitecturas o review-facing de documentos
+- $HERMES_HOME/skills/comment-writer -> Crea comentarios para commits en PRs, Slack, messages o Github
+- $HERMES_HOME/skills/creative -> Son skills de creatividad con el proposito de:
+    - diagramar arquitectura de un proyecto de software (architecture-diagram)
+    - crear grafos con ascii (asci-art)
+    - convierte vidideo/audio a un mp4/gif ascii (ascii-video)
+    - generador de infographics (baoyu-infographic)
+    - diseña interfaces y artefactos de HTML (claude-design)
+    - diseña imagenes y videos con IA (comfyui)
+    - diseña, valida y exporta DESIGN.md al estilo Google (design-md)
+    - diseña diagramas de arquitectura, flujo, secuenciales a partir de archivos JSONs de Excalidraw (excalidraw)
+    - crea y refactoriza texto de forma humana y quita señales de texto que es generado con IA (humanizer)
+    - crea videos y/o animaciones de conceptos de caracter STEM al estilo 3Blue1Brown (manim-video)
+    - create sketches and canvas generative art with no text role (p5.js)
+    - diseña sistemas a parir de 54 templates de sistemas como ejemplo usando en el mundo real (popular-web-designs)
+    - crea texto para tipografica en movieminto, para juegos, efectos de arte con ASCII, texto en movimiento (pretext)
+    - crea un sketch y mockups en HTML (sketch)
+    - genera y escribe música a partir de ejemplos (songwriting-and-ai-music)
+    - desarrollo y programación visual basada en nodos que opera en tiempo real (touchdesigner-mcp) 
+- $HERMES_HOME/skills/deep-research -> Investiga a profundidad un tema en multiples fases
+- $HERMES_HOME/skills/devops -> habilidades para el trabajo de un ingeniero en DevOps:
+    - despliegue de mcps en el cluster de kubernetes de este server (mcp-kubernetes-deployment)
+    - Review Kanban handoffs and route verified outcomes (sdlc-review)
+- $HERMES_HOME/skills/email -> habilidades para enviar, recivir, buscar y manejar email desde la terminal
+- $HERMES_HOME/skills/git-cli -> habilidad para entender, explicar y usar comandos de git usando su cli
+- $HERMES_HOME/skills/github -> skills de github para manejar repositorios, PRs, revisión de codigo, issues y CI/CD pipelines usando el cli de github (gh) via terminal
+- $HERMES_HOME/skills/go-testing -> testea scripts en go, bubbletea teatest y archivos golden.
+- $HERMES_HOME/skills/hermes -> skill para los plugins de hermes y custom tools
+- $HERMES_HOME/skills/issue-creation -> skill para crea un issue con issue-fist check a partir de github checks, reporte de bugs o requests de features
+- $HERMES_HOME/skills/judgment-day -> manda a dos jueces en parelelo que evaluan y dan un veredicto sobre una tarea realizada
+- $HERMES_HOME/skills/media -> skills para trabajar con contenido media como youtube, gif, generacion de mśucia y visualización de audio
+- $HERMES_HOME/skills/mlops -> Knowledge and Tools for Machine Learning Operations - tools and frameworks for training, fine-tuning, deploying, and optimizing ML/AI models
+- $HERMES_HOME/skills/note-taking -> Note taking skills, to save information, assist with research, and collab on multi-session planning and information sharing
+- $HERMES_HOME/skills/productivity -> Skills for document creation, presentations, spreadsheets, and other productivity workflows
+- $HERMES_HOME/skills/propose-note -> Propose a permanent note for the Obsidian knowledge vault (the "cerebro digital", the Zettelkasten)
+- $HERMES_HOME/skills/research -> Skills for academic research, paper discovery, literature review, domain reconnaissance, market data, content monitoring, and scientific knowledge retrieval
+- $HERMES_HOME/skills/sdd-apply -> Implement SDD tasks from specs and design
+- $HERMES_HOME/skills/sdd-archive -> Archive a completed SDD change by syncing delta specs
+- $HERMES_HOME/skills/sdd-design -> Create the SDD technical design and architecture approach
+- $HERMES_HOME/skills/sdd-explore -> Explore SDD ideas before committing to a change
+- $HERMES_HOME/skills/sdd-init -> Initialize SDD context, testing capabilities, registry, and persistence
+- $HERMES_HOME/skills/sdd-onboard -> Walk users through the SDD workflow on the real codebase
+- $HERMES_HOME/skills/sdd-propose -> Create an SDD change proposal with intent, scope, and approach
+- $HERMES_HOME/skills/sdd-spec -> Write SDD delta specs with requirements and scenarios
+- $HERMES_HOME/skills/sdd-tasks -> Break an SDD change into implementation tasks
+- $HERMES_HOME/skills/sdd-verify -> Execute tests and prove implementation matches specs, design, and tasks
+- $HERMES_HOME/skills/setup -> optimiza configuración de hermes, instala  y despliega mcps en kubernetes y herramientas para hermes
+- $HERMES_HOME/skills/skill-creator -> Create LLM-first skills with valid frontmatter
+- $HERMES_HOME/skills/skill-improver -> Audit and upgrade existing LLM-first skills
+- $HERMES_HOME/skills/skill-registry -> Index available skills by trigger and path
+- $HERMES_HOME/skills/smart-home -> Skills for controlling smart home devices — lights, switches, sensors, and home automation systems
+- $HERMES_HOME/skills/social-media -> Skills for interacting with social platforms and social-media workflows — posting, reading, monitoring, and account operations
+- $HERMES_HOME/skills/sotfware-developtment -> Skills para ingenieros de desarrollo de software
+- $HERMES_HOME/skills/subagent-isolation-pattern -> Isolate subagents with restricted tools for research
+- $HERMES_HOME/skills/web-search-fallback -> Fallback para agent-browser: usa curl/wget cuando el navegador no esté disponible
+- $HERMES_HOME/skills/work-units-commits -> Plan commits as reviewable work units

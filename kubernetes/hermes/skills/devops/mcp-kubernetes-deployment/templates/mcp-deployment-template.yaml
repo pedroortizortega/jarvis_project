@@ -1,0 +1,158 @@
+# MCP Deployment YAML Template
+
+This is a template for deploying MCP servers on Kubernetes. Copy this file to `kubernetes/mcps/<name>-deployment.yaml` and customize.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <mcp-server-name>
+  labels:
+    app: <mcp-server-name>
+    mcp: <mcp-type>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: <mcp-server-name>
+  template:
+    metadata:
+      labels:
+        app: <mcp-server-name>
+        mcp: <mcp-type>
+    spec:
+      containers:
+      - name: <mcp-server-name>
+        image: <registry>/<image>:<tag>
+        env:
+        - name: <API_KEY>
+          valueFrom:
+            secretKeyRef:
+              name: <secret-name>
+              key: <key-name>
+        resources:
+          requests:
+            memory: 128Mi
+            cpu: 100m
+          limits:
+            memory: 512Mi
+            cpu: 500m
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: <mcp-server-name>-service
+  labels:
+    app: <mcp-server-name>
+    mcp: <mcp-type>
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: mcp-stdio
+  selector:
+    app: <mcp-server-name>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <secret-name>
+type: Opaque
+stringData:
+  <API_KEY>: "<your-api-key>"
+```
+
+## Customization Guide
+
+| Placeholder | Example | Description |
+|-------------|---------|-------------|
+| `<mcp-server-name>` | `brave-search-mcp` | Unique name for this MCP server |
+| `<mcp-type>` | `brave-search` | Type/category of MCP server |
+| `<registry>/<image>:<tag>` | `ghcr.io/brave/brave-search-mcp-server:latest` | Docker image to deploy |
+| `<API_KEY>` | `BRAVE_API_KEY` | Environment variable name |
+| `<secret-name>` | `brave-api-key-secret` | Kubernetes Secret name |
+| `<key-name>` | `BRAVE_API_KEY` | Key inside the Secret |
+| `<mcp-transport>` | `stdio` | Transport mode (stdio/http) |
+
+## Deployment Commands
+
+```bash
+# Apply deployment
+kubectl apply -f kubernetes/mcps/<name>-deployment.yaml
+
+# Check status
+kubectl get pods -l app=<mcp-server-name>
+
+# View logs
+kubectl logs <pod-name>
+
+# Update image
+kubectl set image deployment/<name> <container>=<new-image>:<tag>
+
+# Rollout Hermes (if integrating with Hermes Agent)
+kubectl rollout restart deployment/hermes-agent
+```
+
+## Common Transport Modes
+
+- **STDIO** (default): Best for Hermes Agent integration
+  ```yaml
+  - name: BRAVE_MCP_TRANSPORT
+    value: "stdio"
+  ```
+
+- **HTTP**: For HTTP-based MCP servers
+  ```yaml
+  - name: BRAVE_MCP_TRANSPORT
+    value: "http"
+  ```
+
+## Resource Limits Guide
+
+| Server Type | Memory Request | Memory Limit | CPU Request | CPU Limit |
+|-------------|----------------|--------------|-------------|-----------|
+| Lightweight (search, docs) | 128Mi | 512Mi | 100m | 500m |
+| Medium (API clients) | 256Mi | 1Gi | 250m | 1000m |
+| Heavy (processing, AI) | 512Mi | 2Gi | 500m | 2000m |
+
+## Security Best Practices
+
+1. **Never hardcode API keys** - Use Kubernetes Secrets
+2. **Use namespace isolation** - Deploy to dedicated MCP namespace
+3. **Add resource limits** - Prevent runaway containers
+4. **Include health checks** - Ensure automatic recovery
+5. **Rotate secrets regularly** - Update API keys periodically
+
+## Integration with Hermes Agent
+
+After deploying a new MCP server:
+
+1. Restart Hermes to load the new MCP:
+   ```bash
+   kubectl rollout restart deployment/hermes-agent
+   ```
+
+2. Verify MCP is loaded:
+   ```bash
+   kubectl logs -f <hermes-pod> | grep -i mcp
+   ```
+
+3. Test the MCP through a conversation with Jarvis.
+
+---
+
+**Template Version:** 1.0  
+**Last Updated:** 2026-07-28

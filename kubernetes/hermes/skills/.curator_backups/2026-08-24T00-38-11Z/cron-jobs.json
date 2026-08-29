@@ -1,0 +1,49 @@
+{
+  "jobs": [
+    {
+      "id": "c89d420b957f",
+      "name": "K8s Health Monitor",
+      "prompt": "# Monitoreo de Estado de Kubernetes - Reporte Diario\n\n## Objetivo\nRevisar el estado de todos los servicios y pods del cluster de Kubernetes y reportar cualquier anomalía detectada.\n\n## Instrucciones\n\n1. **Revisar Pods**:\n   ```bash\n   kubectl get pods --all-namespaces --field-selector=status.phase!=Running -o wide\n   ```\n\n2. **Revisar Servicios**:\n   ```bash\n   kubectl get svc --all-namespaces -o wide\n   ```\n\n3. **Revisar Despliegues**:\n   ```bash\n   kubectl get deployments --all-namespaces -o wide\n   ```\n\n4. **Revisar Estado de los Pods Detallado**:\n   ```bash\n   kubectl get pods --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.readyReplicas/DESIRED:.spec.replicas,STATUS:.status.phase,AGE:.metadata.creationTimestamp\n   ```\n\n5. **Verificar Eventos de Error**:\n   ```bash\n   kubectl get events --all-namespaces --field-selector type=Warning --sort-by='.lastTimestamp'\n   ```\n\n## Formato del Reporte\n\nSi todo está correcto, envíe un mensaje:\n```\n✅ ESTADO DEL CLUSTER: ÓPTIMO\n\nTodos los servicios y pods están operativos.\nNo se detectaron anomalías.\n```\n\nSi hay problemas, envíe:\n```\n⚠️ ESTADO DEL CLUSTER: REQUIERE ATENCIÓN\n\n## Pods No-Running\n[list de pods con estado diferente a Running]\n\n## Servicios Problemáticos\n[list de servicios con estado no-healthy]\n\n## Eventos Recientes\n[mensaje de eventos de warning]\n\n## Acciones Recomendadas\n[recomendaciones específicas basadas en los problemas detectados]\n```\n\n## Nota\n- Solo envíe alerta si detecta problemas\n- Si todo está bien, envíe mensaje de estado óptimo\n- Incluya timestamp del reporte\n- Use comandos de kubectl para obtener información precisa",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": "custom",
+      "model_snapshot": "qwen3",
+      "base_url": null,
+      "script": null,
+      "no_agent": false,
+      "monitor_script": null,
+      "monitor_url": null,
+      "monitor_state": null,
+      "context_from": null,
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-08-19T06:01:23.780125-06:00",
+        "display": "once in 6h"
+      },
+      "schedule_display": "once in 6h",
+      "repeat": {
+        "times": 1,
+        "completed": 1
+      },
+      "enabled": false,
+      "state": "completed",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-08-19T00:01:23.780151-06:00",
+      "next_run_at": null,
+      "last_run_at": "2026-08-19T06:03:18.701205-06:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "telegram",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "run_claim": null,
+      "fire_claim": null
+    }
+  ],
+  "updated_at": "2026-08-19T06:03:18.701299-06:00"
+}

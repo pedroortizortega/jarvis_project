@@ -41,7 +41,7 @@ set -euo pipefail
 
 HERMES_USER="${HERMES_USER:-$(id -un)}"
 HERMES_LITELLM_URL="${HERMES_LITELLM_URL:-}"
-HERMES_COMMIT="${HERMES_COMMIT:-v0.20.1}"
+HERMES_COMMIT="${HERMES_COMMIT:-5fc308a70719a83cccdbba4c0e39c23f5a8239d5}" # upstream tag v2026.8.27 (latest stable 2026-08-28; upstream uses date-based tags, not semver)
 ENABLE_BROWSER=0
 ALLOW_INSECURE_HTTP=0
 DO_START=0
@@ -56,7 +56,7 @@ Required:
 
 Options:
   --user <name>             Service user to install as (default: current user)
-  --hermes-commit <sha>     Hermes version/tag to install (default: v0.20.1)
+  --hermes-commit <sha>     Hermes version/tag to install (default: 5fc308a70719a83cccdbba4c0e39c23f5a8239d5 / v2026.8.27)
   --enable-browser          Install Playwright/Chromium (skipped by default)
   --allow-insecure-http     Permit an http:// --litellm-url (LAN-only transition)
   --start                   After fencing confirmation, enable+start the unit
@@ -166,30 +166,78 @@ fi
 
 log "Fase 3: install Hermes runtime ($HERMES_COMMIT)"
 
-VENDORED_INSTALLER="$(dirname "$0")/../vendor/install-hermes.sh"
+VENDOR_ROOT="$(dirname "$0")/../vendor"
+HERMES_AGENT_SRC="$VENDOR_ROOT/hermes-agent"
+VENDORED_INSTALLER="$HERMES_AGENT_SRC/scripts/install.sh"
+UPSTREAM_REPO="https://github.com/NousResearch/hermes-agent.git"
+
 if [ ! -f "$VENDORED_INSTALLER" ]; then
-  cat >&2 <<EOF
-error: no vendored installer at $VENDORED_INSTALLER
+  # invariant: refuse to touch the network unless $HERMES_COMMIT is a full 40-hex SHA
+  if ! [[ "$HERMES_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: HERMES_COMMIT must be a full 40-character hex commit SHA, got: $HERMES_COMMIT" >&2
+    exit 20
+  fi
+
+  log "no vendored installer at $VENDORED_INSTALLER — auto-vendoring $UPSTREAM_REPO @ $HERMES_COMMIT"
+  install -d -m 755 "$HERMES_AGENT_SRC"
+  ( cd "$HERMES_AGENT_SRC" \
+    && git init -q \
+    && { git remote remove origin >/dev/null 2>&1 || true; } \
+    && git remote add origin "$UPSTREAM_REPO" \
+    && git fetch --quiet --depth 1 origin "$HERMES_COMMIT" \
+    && git checkout --quiet FETCH_HEAD ) || {
+    cat >&2 <<EOF
+error: failed to auto-vendor the Hermes installer from $UPSTREAM_REPO @ $HERMES_COMMIT
 
 spec 004 requires vendoring the official Hermes installer and pinning its
-SHA-256, rather than curl|bash'ing an upstream script whose content can
-change out from under a pinned --commit. This repo does not yet vendor one
-(see specs/004_hermes_native_clone_systemd.md, "Trabajo pendiente" item 5).
+SHA-256 (TOFU), rather than curl|bash'ing an upstream script whose content
+can change out from under a pinned commit. Auto-vendoring is the documented
+primary path: it fetches $UPSTREAM_REPO pinned to the exact commit SHA above
+into $HERMES_AGENT_SRC and uses scripts/install.sh directly from that
+checkout — no copy, nothing to move.
 
-To proceed manually for now:
-  1. Download the real installer from the Hermes project's own instructions.
-  2. Save it to hermes-native/vendor/install-hermes.sh
-  3. sha256sum hermes-native/vendor/install-hermes.sh   # record this
-  4. Re-run this script.
+Likely causes:
+  - no network access to github.com
+  - $HERMES_COMMIT does not exist on $UPSTREAM_REPO (rewritten/force-pushed
+    upstream, or a stale/wrong commit was configured)
+
+Offline/air-gapped override: manually place a checkout at
+$HERMES_AGENT_SRC containing scripts/install.sh and its .sha256, and this
+script will use it without touching the network.
+
+If a stale vendor checkout is already present, force re-vendoring with:
+  rm -rf $HERMES_AGENT_SRC
 EOF
-  exit 20
+    exit 20
+  }
+
+  [ -f "$VENDORED_INSTALLER" ] || {
+    cat >&2 <<EOF
+error: fetched $UPSTREAM_REPO @ $HERMES_COMMIT but scripts/install.sh is
+missing from the checked-out tree at $VENDORED_INSTALLER
+
+Likely causes:
+  - scripts/install.sh moved to a different path at this commit
+  - $HERMES_COMMIT points at a tree that predates this installer
+
+Force re-vendoring after investigating with:
+  rm -rf $HERMES_AGENT_SRC
+EOF
+    exit 20
+  }
+
+  chmod 700 "$VENDORED_INSTALLER"
+  ( cd "$(dirname "$VENDORED_INSTALLER")" && sha256sum "$(basename "$VENDORED_INSTALLER")" > "$(basename "$VENDORED_INSTALLER").sha256" )
+  log "vendored installer recorded at ${VENDORED_INSTALLER}.sha256"
 fi
 
 INSTALLER_SHA256_FILE="${VENDORED_INSTALLER}.sha256"
 if [ -f "$INSTALLER_SHA256_FILE" ]; then
   ( cd "$(dirname "$VENDORED_INSTALLER")" && \
     sha256sum -c "$(basename "$INSTALLER_SHA256_FILE")" ) || {
-    echo "error: vendored installer failed checksum verification" >&2
+    echo "error: vendored installer failed checksum verification." \
+         "If you bumped HERMES_COMMIT, force re-vendoring with:" \
+         "rm -rf $HERMES_AGENT_SRC" >&2
     exit 20
   }
 else
@@ -215,6 +263,7 @@ test -x "$SERVICE_HOME/.hermes/hermes-agent/venv/bin/hermes" || {
   echo "error: expected venv binary missing after install" >&2
   exit 20
 }
+test "$(git -C "$HERMES_HOME/hermes-agent" rev-parse HEAD)" = "$HERMES_COMMIT" || { echo "error: installed commit does not match HERMES_COMMIT" >&2; exit 20; }
 log "runtime installed: $("$HERMES_BIN" --version)"
 
 # ---------------------------------------------------------------------------
@@ -235,6 +284,10 @@ fi
 
 if [ -f "$SOURCE_CONFIG_DIR/SOUL.md" ]; then
   install -m 644 "$SOURCE_CONFIG_DIR/SOUL.md" "$HERMES_HOME/SOUL.md"
+fi
+
+if [ -f "$SOURCE_CONFIG_DIR/AGENTS.md" ]; then
+  install -m 644 "$SOURCE_CONFIG_DIR/AGENTS.md" "$HERMES_HOME/AGENTS.md"
 fi
 
 HERMES_HOME="$HERMES_HOME" "$HERMES_BIN" config set model.base_url "$HERMES_LITELLM_URL" \

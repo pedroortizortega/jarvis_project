@@ -33,16 +33,38 @@ data:
     cache-type-v = q8_0
     kv-offload = true
     ctx-checkpoints = 4
-    load-on-startup = true
+    load-on-startup = false
     stop-timeout = 30
 
     [qwen3.6-27b-q3]
     model = /models/large/Qwen3.6-27B-Q3_K_S.gguf
     ctx-size = 65536
     fit-target = 2048
-    cache-type-k = f16
-    cache-type-v = f16
+    cache-type-k = q8_0
+    cache-type-v = q8_0
     no-kv-offload = true
     ctx-checkpoints = 4
     load-on-startup = false
     stop-timeout = 30
+
+    [qwen3.8-27b-iq2s]
+    model = /models/xl/Qwen3.8-27B-UD-IQ2_S.gguf
+    ctx-size = 200000
+    fit-target = 2048
+    parallel = 2
+    cache-type-k = q4_0
+    cache-type-v = q4_0
+    kv-offload = true
+    cache-ram = 8192
+    ctx-checkpoints = 12
+    ubatch-size = 512
+    cache-reuse = 256
+    kv-unified = true
+    reasoning = auto
+    reasoning-budget = 15000
+    top-p = 0.9
+    temp = 0.6
+    load-on-startup = true
+    stop-timeout = 30
+    n-gpu-layers = auto
+    flash-attn = on

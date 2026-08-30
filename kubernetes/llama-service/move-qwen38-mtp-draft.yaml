@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: move-qwen38-mtp-draft
+  namespace: llms
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        workload: llm
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: llm
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: move
+          image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              sha="50d9ce5a6da381bbcfb31061cf73df94a90e6faf8efeddee379a9cb8f1501c6e"
+              src="/models/xl/MTP/mtp-Qwen3.8-27B-Q4_0.gguf"
+              dst="/models/MTP/mtp-Qwen3.8-27B-Q4_0.gguf"
+
+              if [ -f "$dst" ] && echo "$sha  $dst" | sha256sum -c -; then
+                echo "Draft MTP already exists at its correct PVC path."
+                exit 0
+              fi
+
+              test -f "$src"
+              echo "$sha  $src" | sha256sum -c -
+
+              mkdir -p "$(dirname "$dst")"
+              mv "$src" "$dst"
+              mv "${src}.sha256" "${dst}.sha256" 2>/dev/null || true
+
+              echo "$sha  $dst" | sha256sum -c -
+              echo "Draft MTP moved and verified: $dst"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models-q3-8

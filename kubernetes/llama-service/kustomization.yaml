@@ -5,13 +5,16 @@ resources:
   - pvc-daily.yaml
   - pvc-q3.yaml
   - pvc-q6.yaml
+  - pvc-q38.yaml
   - router-config.yaml
   - deployment-router.yaml
   - deployment.yaml
   - deployment-q3.yaml
+  - deployment-q38.yaml
   - deployment-q6.yaml
   - service-router.yaml
   - service.yaml
   - service-q3.yaml
+  - service-q38.yaml
   - service-q6.yaml
   - networkpolicy.yaml

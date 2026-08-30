@@ -315,10 +315,10 @@ def test_profile_switch_undo_restores_config_and_tolerates_preload_undo_failure(
     assert restored_cm.data["config.yaml"] == original_data["config.yaml"]
 
     # The preload undo is best-effort — the (fake) re-preload of the prior
-    # preset ("qwen3.5-9b") is attempted, but even if it failed it must not
-    # escalate past the already-raised HandoffError (routing correctness is
-    # already restored by the alias undo).
-    assert "qwen3.5-9b" in router_client.preload_calls
+    # preset ("qwen3.8-27b-iq2s") is attempted, but even if it failed it must
+    # not escalate past the already-raised HandoffError (routing correctness
+    # is already restored by the alias undo).
+    assert "qwen3.8-27b-iq2s" in router_client.preload_calls
 
     final_state = store.read()
     assert final_state.phase == "degraded"

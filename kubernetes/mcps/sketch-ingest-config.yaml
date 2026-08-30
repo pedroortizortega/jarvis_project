@@ -1,0 +1,19 @@
+# kicad-design-service — ingestion stage ConfigMap (SDD change: kicad-design-service)
+# Confidence threshold and pipeline handoff keys. The ingestion stage reads
+# these values; low-confidence extractions never auto-commit.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sketch-ingest-config
+  namespace: mcps
+  labels:
+    app: kicad-design
+    mcp: kicad-mcp
+data:
+  confidence_threshold: "0.85"
+  auto_commit: "false"
+  pipeline_handoff.component_list: "components"
+  pipeline_handoff.net_list: "nets"
+  pipeline_handoff.confidence: "confidence"
+  pipeline_handoff.auto_commit: "false"
+  pipeline_handoff.flag_for_review: "true"

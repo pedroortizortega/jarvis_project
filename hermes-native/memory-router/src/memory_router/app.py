@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import re
+import signal
 import sys
 import urllib.error
 import urllib.parse
@@ -18,6 +20,8 @@ from .registry import Registry
 # TBD/confirm against the live `mcps` ingress config (design.md Open
 # Questions) — kept as a single named constant so it is a one-line change.
 CLIENT_CN_HEADER = "X-Forwarded-Client-Cert-Cn"
+
+log = logging.getLogger("memory_router")
 
 
 class DispatchError(Exception):
@@ -324,6 +328,13 @@ def make_handler(dispatcher: Dispatcher):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            log.info("responded %d to %s", status, self._request_path())
+
+        def _request_path(self) -> str:
+            # Log the path without the query string (it can carry role,
+            # which is request metadata, not a secret — but keep it out of
+            # the log line regardless).
+            return urllib.parse.urlsplit(self.path).path
 
         def _respond_error(self, error: DispatchError):
             self._respond(error.status, _dispatch_error_payload(error))
@@ -409,10 +420,28 @@ def build_default_dispatcher() -> Dispatcher:
 
 
 def main() -> None:
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+    def _sigterm_handler(signum, frame):  # noqa: A002 - stdlib signature
+        # Log the receipt, then restore the C-level default action and
+        # re-raise so the process terminates exactly as it would have
+        # without this handler — same exit code/Reason Kubernetes reports.
+        # The prior 9 restarts (Exit 255, Reason Unknown) left no r
+        log.info("SIGTERM received (signal %s); shutting down", signum)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     dispatcher = build_default_dispatcher()
     host = os.environ.get("MEMORY_ROUTER_HOST", "0.0.0.0")
     port = int(os.environ.get("MEMORY_ROUTER_PORT", "8080"))
     server = build_http_server(dispatcher, host=host, port=port)
+    log.info("memory-router up on %s:%d", host, port)
     server.serve_forever()
 
 

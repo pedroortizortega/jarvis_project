@@ -61,7 +61,7 @@ KEDA_PLURAL = "scaledobjects"
 # switch-to-Local always brings up the FIXED default profile — never the
 # previously active one (spec: "Return-to-Local ignores previous profile").
 FIXED_DEFAULT_PROFILE = "daily"
-FIXED_DEFAULT_MODEL_ALIAS = "qwen3.5-9b"  # matches switch-model.sh's `daily` mapping
+FIXED_DEFAULT_MODEL_ALIAS = "qwen3.8-27b-iq2s"  # matches switch-model.sh's `daily` mapping
 
 LITELLM_CONFIGMAP_NAME = "litellm-config"
 LITELLM_CONFIGMAP_DATA_KEY = "config.yaml"
@@ -70,7 +70,7 @@ LITELLM_ALIAS_MODEL_NAME = "qwen3"  # D1: the one stable alias the panel rewrite
 # D18 — the whole profile<->preset mapping, copied verbatim from
 # switch-model.sh's daily/large case statement.
 PROFILE_MODEL_ALIASES: Dict[str, str] = {
-    "daily": "qwen3.5-9b",
+    "daily": "qwen3.8-27b-iq2s",
     "large": "qwen3.6-27b-q3",
 }
 

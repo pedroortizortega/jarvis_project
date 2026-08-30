@@ -22,6 +22,9 @@ data:
         "qwen3.6-27b-q6",
         "openai/qwen3.6-27b-q6",
         "llama-cpp-qwen36-27b-q6",
+        "qwen3.8-27b-iq2s",
+        "openai/qwen3.8-27b-iq2s",
+        "llama-cpp-qwen38-27b-iq2s",
     }
     MAX_OUTPUT_TOKENS = 16_384
     TOKEN_FIELDS = (
@@ -133,6 +136,17 @@ data:
           api_key: os.environ/LLAMA_API_KEY
         model_info:
           id: llama-cpp-qwen35-9b-q6
+          mode: chat
+          max_tokens: 65536
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+      - model_name: qwen3.8-27b-iq2s
+        litellm_params:
+          model: openai/qwen3.8-27b-iq2s
+          api_base: http://llama-router.llms.svc.cluster.local:8080/v1
+          api_key: os.environ/LLAMA_API_KEY
+        model_info:
+          id: llama-cpp-qwen38-27b-iq2s
           mode: chat
           max_tokens: 65536
           max_input_tokens: 49152

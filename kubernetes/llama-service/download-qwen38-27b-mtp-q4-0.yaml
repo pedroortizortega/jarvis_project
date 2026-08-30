@@ -1,0 +1,95 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-qwen38-27b-mtp-q4-0
+  namespace: llms
+  labels:
+    app: llama-model-download-q38-mtp
+    model.huggingface.co/source: hub
+    model.huggingface.co/base-model-official: "true"
+  annotations:
+    model.huggingface.co/repository: unsloth/Qwen3.8-27B-GGUF
+    model.huggingface.co/base-model: Qwen/Qwen3.8-27B
+    model.huggingface.co/revision: 4ca720788d1e01f1bff70c033e0d0028fd02e502
+    model.huggingface.co/tags: base_model:Qwen/Qwen3.8-27B,base_model:quantized:Qwen/Qwen3.8-27B
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 14400
+  template:
+    metadata:
+      labels:
+        app: llama-model-download-q38-mtp
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        workload: llm
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: llm
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: download
+          image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+
+              target="/models/xl/MTP/mtp-Qwen3.8-27B-Q4_0.gguf"
+              partial="${target}.partial"
+              expected_size="1369590656"
+              expected_sha="50d9ce5a6da381bbcfb31061cf73df94a90e6faf8efeddee379a9cb8f1501c6e"
+              url="https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/MTP/mtp-Qwen3.8-27B-Q4_0.gguf?download=true"
+
+              mkdir -p "$(dirname "$target")"
+
+              if [ -f "$target" ] &&
+                 [ "$(wc -c < "$target" | tr -d ' ')" = "$expected_size" ] &&
+                 echo "$expected_sha  $target" | sha256sum -c -; then
+                echo "MTP draft already present and verified."
+                exit 0
+              fi
+
+              rm -f "$target" "$partial"
+
+              curl --fail --location --retry 5 --retry-all-errors \
+                --connect-timeout 30 --output "$partial" "$url"
+
+              test "$(wc -c < "$partial" | tr -d ' ')" = "$expected_size"
+              echo "$expected_sha  $partial" | sha256sum -c -
+              mv "$partial" "$target"
+              echo "$expected_sha  $target" | sha256sum -c -
+              echo "$expected_sha  $(basename "$target")" > "${target}.sha256"
+
+              echo "MTP draft downloaded and verified: $target"
+          env:
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models-q3-8

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llama-models-q3-8
+  namespace: llms
+  labels:
+    model.huggingface.co/source: hub
+    model.huggingface.co/base-model-official: "true"
+  annotations:
+    model.huggingface.co/repository: unsloth/Qwen3.8-27B-GGUF
+    model.huggingface.co/base-model: Qwen/Qwen3.8-27B
+    model.huggingface.co/tags: base_model:Qwen/Qwen3.8-27B,base_model:quantized:Qwen/Qwen3.8-27B
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi

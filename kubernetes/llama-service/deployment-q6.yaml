@@ -59,7 +59,7 @@ spec:
             - --fit
             - "on"
             - --fit-target
-            - "4096"
+            - "1024"
             - --ctx-size
             - "65536"
             - --parallel

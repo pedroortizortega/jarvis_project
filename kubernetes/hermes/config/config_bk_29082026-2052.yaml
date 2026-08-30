@@ -2,7 +2,7 @@ model:
   default: qwen3
   provider: custom
   base_url: http://litellm.llms.svc.cluster.local:4000/v1
-  context_length: 150000
+  context_length: 98304
   # Reserva una salida acotada para que input + output nunca excedan la ventana.
   max_tokens: 32768
 terminal:
@@ -33,11 +33,8 @@ compression:
   enabled: true
   progress_notices: false
   threshold: 0.35
-  # En modelos menores a 512K Hermes eleva threshold a 75%. Con context_length=98304
-  # eso da ~73.7k tokens antes de comprimir — muy tarde para este hardware (el
-  # decode cae de ~22 t/s a ~11 t/s pasados los 60k tokens). Este tope lo fija en
-  # ~25k, bien antes de que la GPU empiece a sufrir.
-  threshold_tokens: 65000
+  # En modelos menores a 512K Hermes eleva threshold a 75%; este tope lo evita.
+  threshold_tokens: 150000
   codex_gpt55_autoraise: true
   target_ratio: 0.2
   protect_last_n: 8
@@ -47,7 +44,7 @@ compression:
   protect_first_n: 1
   idle_compact_after_seconds: 0
   # Reduce resultados antiguos y voluminosos de herramientas antes de compactar.
-  proactive_prune_tokens: 12000
+  proactive_prune_tokens: 40000
   proactive_prune_min_result_chars: 8000
   proactive_prune_min_reclaim_tokens: 4096
 prompt_caching:

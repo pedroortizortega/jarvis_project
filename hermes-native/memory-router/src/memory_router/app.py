@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import signal
+import ssl
 import sys
 import urllib.error
 import urllib.parse
@@ -453,12 +454,34 @@ def main() -> None:
 
 class RestClient:
     """Calls the Memory Router REST surface over HTTP. Used by the MCP
-    stdio shim so both surfaces go through the exact same dispatcher."""
+    stdio shim so both surfaces go through the exact same dispatcher.
 
-    def __init__(self, base_url: str, *, cn: str, bearer: str):
+    Against the real deployment, the Traefik entrypoint terminates mTLS and
+    rejects any connection that doesn't present a client certificate at the
+    TLS layer (see kubernetes/mcps/bootstrap/06-verify.sh step 4/4) — the
+    CN header and bearer token are checked only *after* that handshake
+    succeeds. So when cert_path/key_path are given, this builds an
+    SSLContext that actually presents them; ca_path pins the private CA
+    (memory-router's server cert isn't signed by a public one, so the
+    system trust store won't verify it)."""
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        cn: str,
+        bearer: str,
+        cert_path: str | None = None,
+        key_path: str | None = None,
+        ca_path: str | None = None,
+    ):
         self._base_url = base_url.rstrip("/")
         self._cn = cn
         self._bearer = bearer
+        self._ssl_context = None
+        if cert_path and key_path:
+            self._ssl_context = ssl.create_default_context(cafile=ca_path or None)
+            self._ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
 
     def _post(self, path: str, body: dict) -> tuple[int, dict]:
         request = urllib.request.Request(
@@ -472,7 +495,7 @@ class RestClient:
             },
         )
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, context=self._ssl_context) as response:
                 return response.status, json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             with exc:
@@ -503,20 +526,120 @@ def handle_mcp_tool_call(name: str, arguments: dict, *, client) -> dict:
     return {"status": status, "body": payload}
 
 
+MCP_TOOLS = [
+    {
+        "name": "memory_store",
+        "description": (
+            "Store a memory through the Memory Router. The declared namespace is "
+            "validated and the verb authorized against the caller's role before "
+            "dispatch to the healthy backend."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string"},
+                "namespace": {"type": "string"},
+                "content": {"type": "string"},
+                "metadata": {"type": "object"},
+            },
+            "required": ["role", "namespace", "content"],
+        },
+    },
+    {
+        "name": "memory_search",
+        "description": (
+            "Search memories through the Memory Router. Hierarchical namespace "
+            "fallback (project -> agent -> global) with per-backend markers; "
+            "never a whole-request failure."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string"},
+                "namespace": {"type": "string"},
+                "query": {"type": "string"},
+            },
+            "required": ["role", "namespace", "query"],
+        },
+    },
+    {
+        "name": "memory_reflect",
+        "description": (
+            "Reflect on memories through the Memory Router. Phase 1: returns "
+            "501 not_implemented (no backend logic yet)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "role": {"type": "string"},
+                "namespace": {"type": "string"},
+                "query": {"type": "string"},
+            },
+            "required": ["role", "namespace", "query"],
+        },
+    },
+]
+
+
 def mcp_main() -> None:
     base_url = os.environ.get("MEMORY_ROUTER_URL", "http://127.0.0.1:8080")
     cn = os.environ.get("MEMORY_ROUTER_CLIENT_CN", "")
     bearer = os.environ.get("MEMORY_ROUTER_CLIENT_BEARER", "")
-    client = RestClient(base_url, cn=cn, bearer=bearer)
+    client = RestClient(
+        base_url,
+        cn=cn,
+        bearer=bearer,
+        cert_path=os.environ.get("MEMORY_ROUTER_CLIENT_CERT"),
+        key_path=os.environ.get("MEMORY_ROUTER_CLIENT_KEY"),
+        ca_path=os.environ.get("MEMORY_ROUTER_CA_CERT"),
+    )
 
     for line in sys.stdin:
         line = line.strip()
         if not line:
             continue
         request = json.loads(line)
+        method = request.get("method", "")
         params = request.get("params", {})
-        result = handle_mcp_tool_call(params.get("name", ""), params.get("arguments", {}), client=client)
-        response = {"jsonrpc": "2.0", "id": request.get("id"), "result": result}
+        request_id = request.get("id")
+
+        # JSON-RPC notifications (no "id", e.g. "notifications/initialized")
+        # never get a response -- replying to one is itself a protocol
+        # violation (JSONRPCResponse.id can't be null). Just drop it.
+        if request_id is None:
+            continue
+
+        if method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "memory-router", "version": "0.1.0"},
+                "instructions": (
+                    "Memory Router: store/search/reflect through the declared "
+                    "namespace; identity is hermes-gateway (role jarvis)."
+                ),
+            }
+        elif method == "tools/list":
+            result = {"tools": MCP_TOOLS}
+        elif method == "tools/call":
+            raw = handle_mcp_tool_call(
+                params.get("name", ""), params.get("arguments", {}), client=client
+            )
+            result = {"content": [{"type": "text", "text": json.dumps(raw)}]}
+        elif method == "ping":
+            result = {}
+        else:
+            # Proper JSON-RPC error object (top-level "error", not nested
+            # under "result" -- the latter fails JSONRPCError validation).
+            response = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+            }
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
+            continue
+        response = {"jsonrpc": "2.0", "id": request_id, "result": result}
         sys.stdout.write(json.dumps(response) + "\n")
         sys.stdout.flush()
 

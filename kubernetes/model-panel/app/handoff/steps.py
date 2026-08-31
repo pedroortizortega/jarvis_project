@@ -68,8 +68,9 @@ LITELLM_CONFIGMAP_DATA_KEY = "config.yaml"
 LITELLM_ALIAS_MODEL_NAME = "qwen3"  # D1: the one stable alias the panel rewrites
 
 # D18 — the whole profile<->preset mapping, copied verbatim from
-# switch-model.sh's daily/large case statement.
+# switch-model.sh's mini/daily/large case statement.
 PROFILE_MODEL_ALIASES: Dict[str, str] = {
+    "mini": "qwen3.5-9b",
     "daily": "qwen3.8-27b-iq2s",
     "large": "qwen3.6-27b-q3",
 }

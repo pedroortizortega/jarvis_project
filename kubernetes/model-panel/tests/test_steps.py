@@ -231,6 +231,20 @@ def test_switch_to_cloud_fail_closed_makes_zero_k8s_calls(fake_core_v1, fake_app
 
 
 # ---------------------------------------------------------------------------
+# Profile <-> preset mapping mirrors switch-model.sh's mini/daily/large
+# case statement (kubernetes/llama-service/switch-model.sh) verbatim.
+# ---------------------------------------------------------------------------
+
+
+def test_profile_model_aliases_matches_switch_model_sh():
+    assert steps_mod.PROFILE_MODEL_ALIASES == {
+        "mini": "qwen3.5-9b",
+        "daily": "qwen3.8-27b-iq2s",
+        "large": "qwen3.6-27b-q3",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Successful switch-to-Local always brings up the FIXED default profile
 # ---------------------------------------------------------------------------
 

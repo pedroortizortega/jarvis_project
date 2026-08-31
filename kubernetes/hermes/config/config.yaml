@@ -1,75 +1,13 @@
 model:
-  default: qwen3
+  default: qwen3.8-27b-iq2s
   provider: custom
-  base_url: http://litellm.llms.svc.cluster.local:4000/v1
-  context_length: 150000
-  # Reserva una salida acotada para que input + output nunca excedan la ventana.
-  max_tokens: 32768
-terminal:
-  backend: ssh
-  cwd: .
-  timeout: 180
-  home_mode: auto
-  docker_mount_cwd_to_workspace: false
-  lifetime_seconds: 300
-  container_cpu: 1
-  container_memory: 5120
-  container_disk: 51200
-  container_persistent: true
-browser:
-  inactivity_timeout: 120
-tool_loop_guardrails:
-  warnings_enabled: true
-  hard_stop_enabled: false
-  warn_after:
-    exact_failure: 2
-    same_tool_failure: 3
-    idempotent_no_progress: 2
-  hard_stop_after:
-    exact_failure: 5
-    same_tool_failure: 8
-    idempotent_no_progress: 5
-compression:
-  enabled: true
-  progress_notices: false
-  threshold: 0.35
-  # En modelos menores a 512K Hermes eleva threshold a 75%. Con context_length=98304
-  # eso da ~73.7k tokens antes de comprimir — muy tarde para este hardware (el
-  # decode cae de ~22 t/s a ~11 t/s pasados los 60k tokens). Este tope lo fija en
-  # ~25k, bien antes de que la GPU empiece a sufrir.
-  threshold_tokens: 65000
-  codex_gpt55_autoraise: true
-  target_ratio: 0.2
-  protect_last_n: 8
-  min_tail_user_messages: 1
-  max_attempts: 5
-  codex_app_server_auto: native
-  protect_first_n: 1
-  idle_compact_after_seconds: 0
-  # Reduce resultados antiguos y voluminosos de herramientas antes de compactar.
-  proactive_prune_tokens: 12000
-  proactive_prune_min_result_chars: 8000
-  proactive_prune_min_reclaim_tokens: 4096
-prompt_caching:
-  cache_ttl: 5m
-memory:
-  memory_enabled: true
-  user_profile_enabled: true
-  memory_char_limit: 2200
-  user_char_limit: 1375
-  nudge_interval: 10
-  flush_min_turns: 6
-session_reset:
-  mode: none
-  idle_minutes: 1440
-  at_hour: 4
-group_sessions_per_user: true
-streaming:
-  enabled: false
-skills:
-  creation_nudge_interval: 15
+  base_url: http://192.168.1.241:4000/v1
+  context_length: 100000
+  max_tokens: 8000
+  api_key: ${env:OPENAI_API_KEY}
 agent:
   max_turns: 500
+  verify_on_stop: false
   verbose: false
   reasoning_effort: medium
   personalities:
@@ -109,12 +47,194 @@ agent:
     hype: YOOO LET'S GOOOO!!! 🔥🔥🔥 I am SO PUMPED to help you today! Every question
       is AMAZING and we're gonna CRUSH IT together! This is gonna be LEGENDARY! ARE
       YOU READY?! LET'S DO THIS! 💪😤🚀
-  verify_on_stop: false
+    jarvis: "Eres un mayordomo y asistente personal británico, sobrio y preciso. Te\
+      \ diriges al\nusuario como \"Señor\" de forma natural, sin repetirlo en cada\
+      \ frase.\n\nConducta:\n- Cuando te pida una proyecto, creación o cualquier actvidad\
+      \ que involucre desarrolar algún proyecto.\n  Tu siempre debes preguntarme por\
+      \ la defición del objetivo, los alcances y el resultado final cuando sea un\
+      \ proyecto de desarrollo o construcción.\n- Cuando sea una investigación profunda\
+      \ siempre prefuntar si tengo algún conocimiento previo para tener más contexto,\
+      \ y que temás son los que me intera abordar de la investigación.\n- Respondes\
+      \ primero el hecho concreto, luego el contexto si hace falta.\n- Registro formal\
+      \ y contenido. Nunca efusivo, nunca exclamaciones.\n- Cuando algo va mal, lo\
+      \ enuncias con calma y ofreces la siguiente acción.\n- Tu humor es sarcasmo\
+      \ y ocurrunte: como mucho, una observación breve al final.\n  Es sarcasmo ocasional\
+      \ pero no burla, con chistes ingeniosos dependiendo de la situación.\n  Nunca\
+      \ priorices el humor, cuando hay problemas o respuestas serias que atender.\n\
+      - No adornas. Si la respuesta son cuatro palabras, son cuatro palabras.\n- Nunca\
+      \ dices que eres una IA ni describes tus propias capacidades salvo\n  que te\
+      \ lo pregunten directamente.\n\nEjemplos de tono:\n- \"Los sistemas están operativos,\
+      \ Señor.\"\n- \"El despliegue falló en el tercer nodo. Puedo reintentarlo o\
+      \ mostrarle el registro.\"\n- \"Para usted siempre, Señor\"\n"
+terminal:
+  backend: local
+  cwd: /home/pedro/Documentos/Projects
+  timeout: 180
+  home_mode: auto
+  container_cpu: 1
+  container_memory: 10120
+  container_disk: 51200
+  container_persistent: true
+  docker_mount_cwd_to_workspace: false
+  lifetime_seconds: 300
+web:
+  backend: ddgs
+browser:
+  inactivity_timeout: 120
+  cloud_provider: browser-use
+  use_gateway: false
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: false
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
+compression:
+  enabled: true
+  progress_notices: false
+  threshold: 0.35
+  threshold_tokens: 65000
+  target_ratio: 0.2
+  protect_last_n: 8
+  min_tail_user_messages: 1
+  max_attempts: 5
+  proactive_prune_tokens: 12000
+  proactive_prune_min_result_chars: 8000
+  proactive_prune_min_reclaim_tokens: 4096
+  protect_first_n: 1
+  codex_gpt55_autoraise: true
+  codex_app_server_auto: native
+  idle_compact_after_seconds: 0
+prompt_caching:
+  cache_ttl: 5m
+auxiliary:
+  compression:
+    timeout: 1800
+    context_length: 100000
+  title_generation:
+    timeout: 300
+display:
+  compact: false
+  busy_input_mode: interrupt
+  bell_on_complete: false
+  show_reasoning: false
+  background_process_notifications: all
+  streaming: true
+  skin: default
+  interim_assistant_messages: true
+  tool_progress: all
+  cleanup_progress: false
+  long_running_notifications: true
+  busy_ack_detail: true
+tts:
+  provider: piper
+  piper:
+    voice: es_ES-davefx-medium
+    length_scale: 1.15
+stt:
+  enabled: true
+  language: es
+  local:
+    model: medium
+  openai:
+    model: whisper-1
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 6000
+  user_char_limit: 3000
+  nudge_interval: 10
+  flush_min_turns: 6
+delegation:
+  max_iterations: 60
+  max_concurrent_children: 2
+  max_spawn_depth: 2
+skills:
+  creation_nudge_interval: 15
+telegram:
+  context_limit: 50
+approvals:
+  destructive_slash_confirm: false
+command_allowlist:
+  - script execution via -e/-c flag
+code_execution:
+  timeout: 300
+  max_tool_calls: 50
+streaming:
+  enabled: false
+onboarding:
+  seen:
+    busy_input_prompt: true
+    tool_progress_prompt: true
+updates:
+  pre_update_backup: false
+  backup_keep: 5
+  non_interactive_local_changes: stash
+computer_use:
+  backend: cua
+_config_version: 33
+session_reset:
+  mode: none
+  idle_minutes: 1440
+  at_hour: 4
+group_sessions_per_user: true
 platform_toolsets:
   cli:
-    - hermes-cli
+    - a2a
+    - bfl
+    - brave-search
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - context_engine
+    - cronjob
+    - delegation
+    - file
+    - homeassistant
+    - image_gen
+    - mcp-codegraph
+    - memory
+    - session_search
+    - skills
+    - spotify
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
   telegram:
-    - hermes-telegram
+    - brave-search
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - context_engine
+    - cronjob
+    - delegation
+    - file
+    - homeassistant
+    - image_gen
+    - memory
+    - session_search
+    - skills
+    - spotify
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
   discord:
     - hermes-discord
   whatsapp:
@@ -133,41 +253,105 @@ platform_toolsets:
     - hermes-teams
   google_chat:
     - hermes-google_chat
-stt:
-  enabled: true
-  local:
-    model: base
-  openai:
-    model: whisper-1
-code_execution:
-  timeout: 300
-  max_tool_calls: 50
-delegation:
-  max_iterations: 50
-display:
-  compact: false
-  tool_progress: all
-  cleanup_progress: false
-  interim_assistant_messages: true
-  long_running_notifications: true
-  busy_ack_detail: true
-  busy_input_mode: interrupt
-  background_process_notifications: all
-  bell_on_complete: false
-  show_reasoning: false
-  streaming: true
-  skin: default
-updates:
-  pre_update_backup: false
-  backup_keep: 5
-  non_interactive_local_changes: stash
 plugins:
-  enabled: []
-_config_version: 33
-onboarding:
-  seen:
-    busy_input_prompt: true
-    tool_progress_prompt: true
-auxiliary:
-  title_generation:
-    timeout: 90
+  enabled:
+    - brave-search
+    - platforms/telegram
+    - intent-orchestration
+  disabled: []
+  entries:
+    intent-orchestration:
+      mode: shadow
+      semantic_classifier: true
+      classifier_timeout_seconds: 15
+      classifier_max_tokens: 320
+      local_base_urls:
+        - http://192.168.1.241:4000/v1
+      worker_cwd: /home/pedro/Documentos/Projects
+      audit_enabled: true
+      allow_high_risk_auto: false
+      allow_terminal_workers: false
+      require_classifier_for_explicit: true
+personality: ''
+known_plugin_toolsets:
+  telegram:
+    - brave-search
+    - spotify
+  cli:
+    - a2a
+    - brave-search
+    - spotify
+mcp_servers:
+  codegraph:
+    command: codegraph
+    args:
+      - serve
+      - --mcp
+    timeout: 120
+    connect_timeout: 60
+    enabled: true
+  context7:
+    command: npx
+    args:
+      - -y
+      - --package=@upstash/context7-mcp@2.2.5
+      - --
+      - context7-mcp
+  engram:
+    command: engram
+    args:
+      - mcp
+      - --tools=agent
+    env:
+      ENGRAM_CLOUD_SERVER: http://127.0.0.1:7180
+      ENGRAM_CLOUD_TOKEN: ${ENGRAM_HERMES_BEARER_TOKEN}
+      ENGRAM_CLOUD_AUTOSYNC: '1'
+  memory-router:
+    command: memory-router-mcp
+    args: []
+    env:
+      MEMORY_ROUTER_URL: https://memory-router.trantor.tail07dff9.ts.net:8444
+      MEMORY_ROUTER_CLIENT_CN: hermes-gateway
+      MEMORY_ROUTER_CLIENT_BEARER: ${MEMORY_ROUTER_HERMES_BEARER_TOKEN}
+      MEMORY_ROUTER_CLIENT_CERT: /home/pedro/.config/memory-router/pki/clients/hermes-gateway/hermes-gateway.crt
+      MEMORY_ROUTER_CLIENT_KEY: /home/pedro/.config/memory-router/pki/clients/hermes-gateway/hermes-gateway.key
+      MEMORY_ROUTER_CA_CERT: /home/pedro/.config/memory-router/pki/ca/ca.crt
+    enabled: true
+  freecad:
+    command: uvx
+    args:
+      - freecad-mcp
+    enabled: true
+  kicad:
+    command: /tmp/kicad-mcp-src/.venv314/bin/kicad-mcp-server
+    args: []
+    enabled: true
+known_builtin_toolsets:
+  cli:
+    - bfl
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - context_engine
+    - cronjob
+    - delegation
+    - discord
+    - discord_admin
+    - file
+    - homeassistant
+    - image_gen
+    - memory
+    - session_search
+    - skills
+    - spotify
+    - stt
+    - terminal
+    - todo
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+    - yuanbao

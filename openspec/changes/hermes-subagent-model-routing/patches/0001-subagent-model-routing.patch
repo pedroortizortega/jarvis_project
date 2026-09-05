@@ -1,0 +1,1054 @@
+diff --git c/tests/tools/test_delegate_model_routing.py i/tests/tools/test_delegate_model_routing.py
+new file mode 100644
+index 000000000..46bb2eb59
+--- /dev/null
++++ i/tests/tools/test_delegate_model_routing.py
+@@ -0,0 +1,525 @@
++"""subagent-model-routing: per-task ``model`` field on ``delegate_task``.
++
++Lets the caller pick a specific llama-router preset (or ``cloud``) per
++delegated subagent task instead of every child in a batch inheriting one
++call-level model. Covers: per-task resolution, pre-dispatch allowlist
++validation (fail-fast, zero spawn on any invalid model), GPU-safe wave
++scheduling (distinct local presets serialize, cloud is exempt), the schema
++deepcopy fix, and dynamic schema/description exposure of the allowlist.
++"""
++
++import json
++import threading
++import time
++from unittest.mock import MagicMock, patch
++
++import pytest
++
++from tools.delegate_tool import delegate_task
++
++
++ADDRESS_SCHEMA = {
++    "type": "object",
++    "properties": {"city": {"type": "string"}},
++    "required": ["city"],
++}
++
++
++def _make_mock_parent():
++    parent = MagicMock()
++    parent._delegate_depth = 0
++    parent._active_children = []
++    parent._active_children_lock = threading.Lock()
++    # Explicit string session_id: async dispatch persists this to sqlite
++    # (record["parent_session_id"]) and a bare MagicMock auto-attribute
++    # is not bindable there.
++    parent.session_id = "test-parent-session"
++    return parent
++
++
++# ---------------------------------------------------------------------------
++# Phase 2: Allowlist Resolution
++# ---------------------------------------------------------------------------
++
++
++class TestResolveTaskModel:
++    def test_explicit_model_wins(self):
++        from tools.delegate_tool import _resolve_task_model
++
++        assert (
++            _resolve_task_model({"model": "qwen3.6-27b-q3"}, "cloud")
++            == "qwen3.6-27b-q3"
++        )
++
++    def test_absent_model_falls_back_to_default(self):
++        from tools.delegate_tool import _resolve_task_model
++
++        assert _resolve_task_model({}, "cloud") == "cloud"
++
++    def test_none_model_falls_back_to_default(self):
++        from tools.delegate_tool import _resolve_task_model
++
++        assert _resolve_task_model({"model": None}, "cloud") == "cloud"
++
++    def test_blank_model_falls_back_to_default(self):
++        from tools.delegate_tool import _resolve_task_model
++
++        assert _resolve_task_model({"model": "   "}, "cloud") == "cloud"
++
++    def test_model_is_stripped(self):
++        from tools.delegate_tool import _resolve_task_model
++
++        assert _resolve_task_model({"model": "  qwen3.5-9b  "}, "cloud") == "qwen3.5-9b"
++
++
++class TestGetAllowedModels:
++    def test_custom_config_allowlist_is_used(self):
++        from tools.delegate_tool import _get_allowed_models
++
++        with patch(
++            "tools.delegate_tool._load_config",
++            return_value={"allowed_models": ["custom-a", "custom-b"]},
++        ):
++            assert _get_allowed_models() == ["custom-a", "custom-b"]
++
++    def test_missing_key_falls_back_to_four_defaults(self):
++        from tools.delegate_tool import _get_allowed_models
++
++        with patch("tools.delegate_tool._load_config", return_value={}):
++            assert _get_allowed_models() == [
++                "qwen3.5-9b",
++                "qwen3.6-27b-q3",
++                "qwen3.8-27b-iq2s",
++                "cloud",
++            ]
++
++    def test_empty_list_falls_back_to_defaults(self):
++        from tools.delegate_tool import _get_allowed_models
++
++        with patch(
++            "tools.delegate_tool._load_config", return_value={"allowed_models": []}
++        ):
++            assert _get_allowed_models() == [
++                "qwen3.5-9b",
++                "qwen3.6-27b-q3",
++                "qwen3.8-27b-iq2s",
++                "cloud",
++            ]
++
++
++# ---------------------------------------------------------------------------
++# Phase 3: Fail-Fast Validation
++# ---------------------------------------------------------------------------
++
++
++class TestValidateTaskModels:
++    def test_invalid_model_names_task_index_value_and_choices(self):
++        from tools.delegate_tool import _validate_task_models
++
++        allowed = ["qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.8-27b-iq2s", "cloud"]
++        task_list = [
++            {"goal": "task 0"},
++            {"goal": "task 1"},
++            {"goal": "task 2", "model": "qwen3.6-27b-q6"},
++            {"goal": "task 3"},
++            {"goal": "task 4"},
++        ]
++        err = _validate_task_models(task_list, allowed)
++        assert err is not None
++        assert "Task 2" in err
++        assert "qwen3.6-27b-q6" in err
++        for choice in allowed:
++            assert choice in err
++
++    def test_all_valid_returns_none(self):
++        from tools.delegate_tool import _validate_task_models
++
++        allowed = ["qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.8-27b-iq2s", "cloud"]
++        task_list = [
++            {"goal": "task 0", "model": "qwen3.5-9b"},
++            {"goal": "task 1"},
++            {"goal": "task 2", "model": "cloud"},
++        ]
++        assert _validate_task_models(task_list, allowed) is None
++
++    def test_misspelled_model_rejected_not_silently_defaulted(self):
++        from tools.delegate_tool import _validate_task_models
++
++        allowed = ["qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.8-27b-iq2s", "cloud"]
++        task_list = [{"goal": "task 0", "model": "qwen3.5-9"}]
++        err = _validate_task_models(task_list, allowed)
++        assert err is not None
++        assert "qwen3.5-9" in err
++
++
++# ---------------------------------------------------------------------------
++# Phase 4: GPU-Safe Wave Scheduling
++# ---------------------------------------------------------------------------
++
++
++class _RecordingStubChild:
++    """Minimal child agent double that records its resolved model."""
++
++    tool_progress_callback = None
++    _delegate_saved_tool_names: list = []
++    _credential_pool = None
++    _subagent_id = None
++    _delegate_depth = 1
++    _parent_subagent_id = None
++    _delegate_output_schema = None
++    session_prompt_tokens = 0
++    session_completion_tokens = 0
++    session_estimated_cost_usd = 0.0
++    session_reasoning_tokens = 0
++
++    def __init__(self, model):
++        self.model = model
++
++    def close(self):
++        return None
++
++
++def _dispatch_wave_batch(
++    task_models_by_index,
++    *,
++    sleep_seconds=0.08,
++    max_concurrent_children=10,
++    background=False,
++    interrupt_after=None,
++    parent=None,
++):
++    """Dispatch a batch through the real delegate_task/_execute_and_aggregate
++    path with faked child construction + execution, recording
++    (model, enter_ts, exit_ts) for every task so wave-scheduling behavior
++    (serialization / concurrency / exemption) can be asserted on real
++    wall-clock overlap.
++    """
++    events: list = []
++    lock = threading.Lock()
++    active = {"count": 0, "max": 0}
++
++    def fake_build(**kwargs):
++        return _RecordingStubChild(kwargs["model"])
++
++    def fake_run_single_child(task_index, goal, child=None, parent_agent=None, **_kw):
++        enter_ts = time.monotonic()
++        with lock:
++            active["count"] += 1
++            active["max"] = max(active["max"], active["count"])
++        time.sleep(sleep_seconds)
++        exit_ts = time.monotonic()
++        with lock:
++            active["count"] -= 1
++            events.append(
++                {
++                    "task_index": task_index,
++                    "model": child.model,
++                    "enter": enter_ts,
++                    "exit": exit_ts,
++                }
++            )
++        return {
++            "task_index": task_index,
++            "status": "completed",
++            "summary": "ok",
++            "api_calls": 1,
++            "duration_seconds": round(exit_ts - enter_ts, 2),
++        }
++
++    tasks = []
++    for i, model in enumerate(task_models_by_index):
++        t = {"goal": f"Task {i} goal is long enough to pass validation"}
++        if model is not None:
++            t["model"] = model
++        tasks.append(t)
++
++    parent_agent = parent or _make_mock_parent()
++    if interrupt_after is not None:
++        def _delayed_interrupt():
++            time.sleep(interrupt_after)
++            parent_agent._interrupt_requested = True
++
++        threading.Thread(target=_delayed_interrupt, daemon=True).start()
++
++    with (
++        patch(
++            "tools.delegate_tool._load_config",
++            return_value={"max_concurrent_children": max_concurrent_children},
++        ),
++        patch(
++            "tools.delegate_tool._resolve_delegation_credentials",
++            return_value={
++                "provider": None,
++                "model": "cloud",
++                "base_url": None,
++                "api_key": None,
++                "api_mode": None,
++            },
++        ),
++        patch(
++            "tools.delegate_tool._build_child_preserving_parent_tools",
++            side_effect=fake_build,
++        ),
++        patch(
++            "tools.delegate_tool._run_single_child",
++            side_effect=fake_run_single_child,
++        ),
++    ):
++        start = time.monotonic()
++        out = delegate_task(tasks=tasks, background=background, parent_agent=parent_agent)
++        if background:
++            # dispatch_async_delegation_batch runs the batch on a daemon
++            # executor OUTSIDE this `with` block's lifetime. The mock
++            # patches above only apply while the batch actually executes,
++            # so wait for it to finish HERE, still inside the patched
++            # context, instead of racing the background thread against
++            # patch teardown.
++            deadline = time.monotonic() + 5
++            expected = len(task_models_by_index)
++            while len(events) < expected and time.monotonic() < deadline:
++                time.sleep(0.01)
++        wall = time.monotonic() - start
++    return out, events, active["max"], wall
++
++
++def _range_overlaps(a, b):
++    a_min = min(e["enter"] for e in a)
++    a_max = max(e["exit"] for e in a)
++    b_min = min(e["enter"] for e in b)
++    b_max = max(e["exit"] for e in b)
++    return a_min < b_max and b_min < a_max
++
++
++class TestGpuSafeWaveScheduling:
++    def test_two_distinct_local_presets_never_overlap(self):
++        out, events, _max_active, _wall = _dispatch_wave_batch(
++            ["qwen3.5-9b", "qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.6-27b-q3"],
++            sleep_seconds=0.08,
++        )
++        assert json.loads(out).get("error") is None
++        group_a = [e for e in events if e["model"] == "qwen3.5-9b"]
++        group_b = [e for e in events if e["model"] == "qwen3.6-27b-q3"]
++        assert len(group_a) == 2
++        assert len(group_b) == 2
++        assert not _range_overlaps(group_a, group_b)
++
++    def test_cloud_runs_concurrently_with_local_group(self):
++        out, events, _max_active, _wall = _dispatch_wave_batch(
++            ["qwen3.5-9b", "qwen3.5-9b", "cloud"],
++            sleep_seconds=0.08,
++        )
++        assert json.loads(out).get("error") is None
++        local = [e for e in events if e["model"] == "qwen3.5-9b"]
++        cloud = [e for e in events if e["model"] == "cloud"]
++        assert len(local) == 2
++        assert len(cloud) == 1
++        assert _range_overlaps(local, cloud)
++
++    def test_same_preset_children_respect_concurrency_cap(self):
++        # NOTE: delegate_task's pre-existing batch-size gate rejects any
++        # call where len(tasks) > max_concurrent_children (line ~3708,
++        # unrelated to this change), so a single group can never literally
++        # exceed the cap -- there's no reachable "N tasks > cap" scenario
++        # through delegate_task itself. What IS testable and IS the actual
++        # regression risk from the wave-scheduling refactor: the thread
++        # pool executor must still be built with max_workers derived from
++        # _get_max_concurrent_children() (today's existing cap, untouched
++        # by wave partitioning), and a same-model group must actually use
++        # that full concurrency (not serialize down to 1 per task).
++        import tools.daemon_pool as daemon_pool
++
++        real_cls = daemon_pool.DaemonThreadPoolExecutor
++        captured = {}
++
++        def spy_ctor(*args, **kwargs):
++            captured["max_workers"] = kwargs.get("max_workers")
++            return real_cls(*args, **kwargs)
++
++        with patch.object(daemon_pool, "DaemonThreadPoolExecutor", side_effect=spy_ctor):
++            out, events, max_active, _wall = _dispatch_wave_batch(
++                ["qwen3.6-27b-q3"] * 3,
++                sleep_seconds=0.05,
++                max_concurrent_children=3,
++            )
++        assert json.loads(out).get("error") is None
++        assert len(events) == 3
++        assert captured["max_workers"] == 3
++        assert max_active == 3  # full intra-group concurrency, not serialized
++
++    def test_all_same_model_batch_has_no_artificial_delay(self):
++        out, events, max_active, wall = _dispatch_wave_batch(
++            ["cloud", "cloud", "cloud"],
++            sleep_seconds=0.08,
++            max_concurrent_children=10,
++        )
++        assert json.loads(out).get("error") is None
++        assert len(events) == 3
++        # All 3 run concurrently -- wall clock is close to ONE sleep, not 3x.
++        assert wall < 0.08 * 3
++        assert max_active == 3
++
++    def test_results_sorted_by_task_index_and_interrupt_returns_partial(self):
++        parent = _make_mock_parent()
++        out, events, _max_active, _wall = _dispatch_wave_batch(
++            ["qwen3.5-9b", "qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.6-27b-q3"],
++            sleep_seconds=0.15,
++            interrupt_after=0.01,
++            parent=parent,
++        )
++        payload = json.loads(out)
++        results = payload["results"]
++        indices = [r["task_index"] for r in results]
++        assert indices == sorted(indices)
++        assert len(results) == 4
++        # At least one task could not finish before the interrupt landed.
++        statuses = {r["status"] for r in results}
++        assert "interrupted" in statuses or "completed" in statuses
++
++    def test_background_path_serializes_distinct_local_presets_too(self):
++        out, events, _max_active, _wall = _dispatch_wave_batch(
++            ["qwen3.5-9b", "qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.6-27b-q3"],
++            sleep_seconds=0.08,
++            background=True,
++        )
++        assert len(events) == 4
++        group_a = [e for e in events if e["model"] == "qwen3.5-9b"]
++        group_b = [e for e in events if e["model"] == "qwen3.6-27b-q3"]
++        assert not _range_overlaps(group_a, group_b)
++
++
++# ---------------------------------------------------------------------------
++# Phase 5: Schema Deepcopy Fix + Model Field Exposure
++# ---------------------------------------------------------------------------
++
++
++class TestSchemaDeepcopyRegression:
++    def test_static_schema_unmutated_after_two_dynamic_builds(self):
++        """_build_dynamic_schema_overrides must never corrupt the static
++        DELEGATE_TASK_SCHEMA in place -- it shallow-copied only top-level
++        properties, so tasks["items"]["properties"] (nested) stayed shared
++        with whatever the dynamic path mutates. Calling it twice must not
++        change the static schema's tasks.items.properties keys."""
++        from tools.delegate_tool import DELEGATE_TASK_SCHEMA, _build_dynamic_schema_overrides
++
++        static_keys_before = set(
++            DELEGATE_TASK_SCHEMA["parameters"]["properties"]["tasks"]["items"][
++                "properties"
++            ].keys()
++        )
++        _build_dynamic_schema_overrides()
++        _build_dynamic_schema_overrides()
++        static_keys_after = set(
++            DELEGATE_TASK_SCHEMA["parameters"]["properties"]["tasks"]["items"][
++                "properties"
++            ].keys()
++        )
++        assert static_keys_after == static_keys_before
++
++
++class TestDynamicModelSchemaField:
++    def test_model_field_enum_matches_dynamic_allowlist(self):
++        from tools.delegate_tool import _build_dynamic_schema_overrides
++
++        with patch(
++            "tools.delegate_tool._load_config",
++            return_value={"allowed_models": ["custom-x", "custom-y"]},
++        ):
++            overrides = _build_dynamic_schema_overrides()
++        item_props = overrides["parameters"]["properties"]["tasks"]["items"]["properties"]
++        assert "model" in item_props
++        assert item_props["model"]["enum"] == ["custom-x", "custom-y"]
++
++    def test_model_field_enum_falls_back_to_defaults(self):
++        from tools.delegate_tool import _build_dynamic_schema_overrides
++
++        with patch("tools.delegate_tool._load_config", return_value={}):
++            overrides = _build_dynamic_schema_overrides()
++        item_props = overrides["parameters"]["properties"]["tasks"]["items"]["properties"]
++        assert item_props["model"]["enum"] == [
++            "qwen3.5-9b",
++            "qwen3.6-27b-q3",
++            "qwen3.8-27b-iq2s",
++            "cloud",
++        ]
++
++
++class TestModelsLabel:
++    def test_uniform_models_return_single_label(self):
++        from tools.delegate_tool import _models_label
++
++        assert _models_label(["qwen3.5-9b", "qwen3.5-9b"]) == "qwen3.5-9b"
++
++    def test_mixed_models_return_joined_label(self):
++        from tools.delegate_tool import _models_label
++
++        assert _models_label(["qwen3.5-9b", "cloud"]) == "mixed: qwen3.5-9b+cloud"
++
++
++class TestZeroSpawnOnValidationFailure:
++    def test_sync_path_rejects_and_spawns_nothing(self):
++        from tools.delegate_tool import delegate_task
++
++        spy = MagicMock(side_effect=AssertionError("should never be called"))
++        with (
++            patch("tools.delegate_tool._load_config", return_value={}),
++            patch(
++                "tools.delegate_tool._resolve_delegation_credentials",
++                return_value={
++                    "provider": None,
++                    "model": "cloud",
++                    "base_url": None,
++                    "api_key": None,
++                    "api_mode": None,
++                },
++            ),
++            patch("tools.delegate_tool._build_child_preserving_parent_tools", spy),
++        ):
++            out = delegate_task(
++                tasks=[
++                    {"goal": "Summarize the release notes for module A"},
++                    {"goal": "Summarize the release notes for module B"},
++                    {
++                        "goal": "Summarize the release notes for module C",
++                        "model": "qwen3.6-27b-q6",
++                    },
++                ],
++                parent_agent=_make_mock_parent(),
++            )
++        payload = json.loads(out)
++        assert payload.get("error")
++        assert "Task 2" in payload["error"]
++        assert "qwen3.6-27b-q6" in payload["error"]
++        assert spy.call_count == 0
++
++    def test_background_path_rejects_and_spawns_nothing(self):
++        from tools.delegate_tool import delegate_task
++
++        spy = MagicMock(side_effect=AssertionError("should never be called"))
++        with (
++            patch("tools.delegate_tool._load_config", return_value={}),
++            patch(
++                "tools.delegate_tool._resolve_delegation_credentials",
++                return_value={
++                    "provider": None,
++                    "model": "cloud",
++                    "base_url": None,
++                    "api_key": None,
++                    "api_mode": None,
++                },
++            ),
++            patch("tools.delegate_tool._build_child_preserving_parent_tools", spy),
++        ):
++            out = delegate_task(
++                tasks=[
++                    {"goal": "Summarize the release notes for module A"},
++                    {
++                        "goal": "Summarize the release notes for module B",
++                        "model": "qwen3.6-27b-q6",
++                    },
++                ],
++                background=True,
++                parent_agent=_make_mock_parent(),
++            )
++        payload = json.loads(out)
++        assert payload.get("error")
++        assert spy.call_count == 0
+diff --git c/tools/delegate_tool.py i/tools/delegate_tool.py
+index 8699edb98..ffdba6519 100644
+--- c/tools/delegate_tool.py
++++ i/tools/delegate_tool.py
+@@ -19,6 +19,7 @@ never the child's intermediate tool calls or reasoning.
+ 
+ import enum
+ import contextvars
++import copy
+ import json
+ import logging
+ import re
+@@ -3530,6 +3531,124 @@ def _recover_tasks_from_json_string(
+     return parsed, None
+ 
+ 
++# subagent-model-routing: per-task model selection. Lets a batch task pick
++# a specific llama-router preset (or 'cloud') instead of inheriting the
++# call-level creds["model"]. Defaults mirror litellm-config.yaml's 4 entries;
++# externalized via delegation.allowed_models so a future config addition
++# doesn't require a code change (see _get_allowed_models).
++_DEFAULT_ALLOWED_MODELS = ("qwen3.5-9b", "qwen3.6-27b-q3", "qwen3.8-27b-iq2s", "cloud")
++# Models exempt from GPU-safe wave serialization -- they don't compete for
++# the single-GPU llama-router's --models-max 1 slot, so they always run
++# concurrently with whatever local-preset group is executing.
++_GPU_EXEMPT_MODELS = frozenset({"cloud"})
++
++
++def _get_allowed_models() -> List[str]:
++    """Return the configured per-task model allowlist.
++
++    Reads delegation.allowed_models via _load_config() (config.yaml >
++    _DEFAULT_ALLOWED_MODELS fallback). An absent or empty list falls back to
++    the 4 defaults so an install with no such key behaves exactly as if the
++    allowlist were hardcoded.
++    """
++    val = _load_config().get("allowed_models")
++    if isinstance(val, list) and val:
++        return [str(m) for m in val]
++    return list(_DEFAULT_ALLOWED_MODELS)
++
++
++def _resolve_task_model(t: Dict[str, Any], default_model: Optional[str]) -> Optional[str]:
++    """Resolve one task's effective model: its own 'model' field if set and
++    non-blank, else the call-level default (creds["model"])."""
++    raw = t.get("model")
++    return raw.strip() if isinstance(raw, str) and raw.strip() else default_model
++
++
++def _validate_task_models(
++    task_list: List[Dict[str, Any]], allowed: List[str]
++) -> Optional[str]:
++    """Validate every task's explicit 'model' field against the allowlist.
++
++    Returns an actionable error string naming the offending task index, the
++    invalid value, and the full list of valid choices, or None when every
++    explicit per-task model (if any) is allowed. Tasks that omit 'model'
++    entirely are never checked here -- they resolve to the call-level
++    default in _resolve_task_model.
++    """
++    for i, t in enumerate(task_list):
++        raw = t.get("model")
++        if raw is None:
++            continue
++        if not isinstance(raw, str) or not raw.strip():
++            return (
++                f"Task {i} has an invalid 'model' ({raw!r}): expected a "
++                f"non-empty string. Valid choices: {', '.join(allowed)}."
++            )
++        if raw.strip() not in allowed:
++            return (
++                f"Task {i} requested model {raw.strip()!r}, which is not "
++                f"in the delegation allowlist. Valid choices: "
++                f"{', '.join(allowed)}. Set delegation.allowed_models in "
++                f"config.yaml to change this. No subagents were spawned."
++            )
++    return None
++
++
++def _partition_gpu_waves(
++    children: List[tuple], task_models: List[Optional[str]], gpu_exempt: frozenset
++) -> "tuple[list, list]":
++    """Group built children by resolved model for GPU-safe wave scheduling.
++
++    ``children`` is the list of (task_index, task_dict, child_agent) tuples
++    already built for this batch. Returns (exempt_group, local_groups):
++
++    - ``exempt_group``: children whose resolved model is in ``gpu_exempt``
++      (e.g. 'cloud') -- always submitted immediately, never waits on or
++      blocks any local-preset group.
++    - ``local_groups``: a list of groups, one per distinct non-exempt
++      resolved model, in first-seen order. Distinct groups must run
++      sequentially (one fully completes before the next starts) so the
++      single-GPU llama-router (--models-max 1, LRU eviction) never thrashes
++      between presets. When every task shares one resolved model, this is
++      naturally a single group -- no special-casing needed, the caller's
++      wave loop drains it exactly like today's one-group submit-then-wait.
++    """
++    exempt_group: list = []
++    group_order: List[str] = []
++    groups_by_model: Dict[str, list] = {}
++    for i, t, child in children:
++        model = task_models[i] if i < len(task_models) else None
++        if model in gpu_exempt:
++            exempt_group.append((i, t, child))
++            continue
++        key = model if model is not None else "__default__"
++        if key not in groups_by_model:
++            groups_by_model[key] = []
++            group_order.append(key)
++        groups_by_model[key].append((i, t, child))
++    local_groups = [groups_by_model[k] for k in group_order]
++    return exempt_group, local_groups
++
++
++def _models_label(models: List[Optional[str]]) -> Optional[str]:
++    """Collapse a batch's resolved per-task models into a display label.
++
++    Returns the single model when every task resolved to the same value,
++    else "mixed: a+b+..." (in first-seen order, no duplicates). Used only
++    for metadata/display call sites -- never for routing decisions.
++    """
++    seen: List[str] = []
++    for m in models:
++        label = m if isinstance(m, str) and m else "unknown"
++        if label not in seen:
++            seen.append(label)
++    if not seen:
++        return None
++    if len(seen) == 1:
++        return seen[0]
++    return "mixed: " + "+".join(seen)
++
++
+ # Placeholder shapes for batch goal validation: bare 'TODO', bare 'task N'
+ # labels, or goals still carrying unexpanded template markers.
+ #
+@@ -3776,6 +3895,19 @@ def delegate_task(
+             return tool_error(f"Task {i} output_schema invalid: {schema_err}")
+         task_schemas.append(coerced_schema)
+ 
++    # subagent-model-routing: fail-fast allowlist validation before any
++    # child is built or spawned. Shared by both the synchronous batch loop
++    # and the background/async path (dispatch_async_delegation_batch),
++    # since both funnel through this single call site before the build loop
++    # below -- construction-order guarantee, see design.md.
++    _allowed_models = _get_allowed_models()
++    _model_error = _validate_task_models(task_list, _allowed_models)
++    if _model_error:
++        return tool_error(_model_error)
++    task_models: List[Optional[str]] = [
++        _resolve_task_model(t, creds["model"]) for t in task_list
++    ]
++
+     overall_start = time.monotonic()
+     results = []
+ 
+@@ -3795,7 +3927,7 @@ def delegate_task(
+     )
+ 
+     live_deleg_id, live_writers, live_paths = create_live_transcripts(
+-        task_list, context, model=creds.get("model"), provider=creds.get("provider")
++        task_list, context, model=_models_label(task_models), provider=creds.get("provider")
+     )
+ 
+     # Capture the ORIGINATING session's wake target BEFORE any child agent is
+@@ -3845,7 +3977,10 @@ def delegate_task(
+                 # Subagents always inherit the parent's toolsets; the model
+                 # cannot choose or narrow them (no model-facing toolsets arg).
+                 toolsets=None,
+-                model=creds["model"],
++                # subagent-model-routing: per-task model if the caller set
++                # one and it passed allowlist validation above, else the
++                # call-level default -- identical to pre-change behavior.
++                model=task_models[i],
+                 max_iterations=effective_max_iter,
+                 task_count=n_tasks,
+                 parent_agent=parent_agent,
+@@ -3920,63 +4055,112 @@ def delegate_task(
+             # wedged, the abandoned worker must not block interpreter exit.
+             from tools.daemon_pool import DaemonThreadPoolExecutor
+             with DaemonThreadPoolExecutor(max_workers=max_children) as executor:
+-                futures = {}
+-                for i, t, child in children:
+-                    child_context = contextvars.copy_context()
+-                    future = executor.submit(
+-                        child_context.run,
+-                        _run_single_child,
+-                        task_index=i,
+-                        goal=t["goal"],
+-                        child=child,
+-                        parent_agent=parent_agent,
+-                        owner_session_id=_origin_ui_session_id or None,
+-                        owner_transport=_origin_owner_transport,
+-                        owner_session_record=_origin_owner_session_record,
+-                    )
+-                    futures[future] = i
+-
+-                # Poll futures with interrupt checking.  as_completed() blocks
+-                # until ALL futures finish — if a child agent gets stuck,
+-                # the parent blocks forever even after interrupt propagation.
+-                # Instead, use wait() with a short timeout so we can bail
+-                # when the parent is interrupted.
++                futures: Dict[Any, int] = {}
+                 # Map task_index -> child agent, so fabricated entries for
+                 # still-pending futures can carry the correct _delegate_role.
+                 _child_by_index = {i: child for (i, _, child) in children}
++                _interrupted_flag = {"hit": False}
+ 
+-                pending = set(futures.keys())
+-                while pending:
+-                    if (
+-                        honor_parent_interrupt
+-                        and getattr(parent_agent, "_interrupt_requested", False) is True
+-                    ):
+-                        # Parent interrupted — collect whatever finished and
+-                        # abandon the rest.  Children already received the
+-                        # interrupt signal; we just can't wait forever.
+-                        for f in pending:
+-                            idx = futures[f]
+-                            if f.done():
+-                                try:
+-                                    entry = f.result()
+-                                except Exception as exc:
++                def _submit(group) -> set:
++                    """Submit one group's children to the shared executor.
++                    The executor's max_workers (== max_children, today's
++                    existing cap) still bounds intra-group concurrency --
++                    wave partitioning only changes WHEN a group is
++                    submitted, never how many of its children may run at
++                    once."""
++                    submitted: Dict[Any, int] = {}
++                    for i, t, child in group:
++                        child_context = contextvars.copy_context()
++                        future = executor.submit(
++                            child_context.run,
++                            _run_single_child,
++                            task_index=i,
++                            goal=t["goal"],
++                            child=child,
++                            parent_agent=parent_agent,
++                            owner_session_id=_origin_ui_session_id or None,
++                            owner_transport=_origin_owner_transport,
++                            owner_session_record=_origin_owner_session_record,
++                        )
++                        submitted[future] = i
++                    futures.update(submitted)
++                    return set(submitted.keys())
++
++                def _drain_until(pending: set, target: set) -> set:
++                    """Poll futures with interrupt checking until every
++                    future in `target` has left `pending` (completed or
++                    fabricated on interrupt). Verbatim extraction of the
++                    original single-wave `while pending:` block, generalized
++                    so a caller can drain just one wave's futures while
++                    earlier/other waves' futures may still be outstanding
++                    in `pending`.
++                    """
++                    nonlocal completed_count
++                    while target & pending:
++                        if (
++                            honor_parent_interrupt
++                            and getattr(parent_agent, "_interrupt_requested", False)
++                            is True
++                        ):
++                            # Parent interrupted — collect whatever finished
++                            # and abandon the rest (including futures from
++                            # waves other than `target`, exactly like the
++                            # original single-wave behavior). Children
++                            # already received the interrupt signal; we
++                            # just can't wait forever.
++                            for f in pending:
++                                idx = futures[f]
++                                if f.done():
++                                    try:
++                                        entry = f.result()
++                                    except Exception as exc:
++                                        entry = {
++                                            "task_index": idx,
++                                            "status": "error",
++                                            "summary": None,
++                                            "error": str(exc),
++                                            "api_calls": 0,
++                                            "duration_seconds": 0,
++                                            "_child_role": getattr(
++                                                _child_by_index.get(idx),
++                                                "_delegate_role",
++                                                None,
++                                            ),
++                                        }
++                                else:
+                                     entry = {
+                                         "task_index": idx,
+-                                        "status": "error",
++                                        "status": "interrupted",
+                                         "summary": None,
+-                                        "error": str(exc),
++                                        "error": "Parent agent interrupted — child did not finish in time",
+                                         "api_calls": 0,
+                                         "duration_seconds": 0,
+                                         "_child_role": getattr(
+-                                            _child_by_index.get(idx), "_delegate_role", None
++                                            _child_by_index.get(idx),
++                                            "_delegate_role",
++                                            None,
+                                         ),
+                                     }
+-                            else:
++                                results.append(entry)
++                                completed_count += 1
++                            _interrupted_flag["hit"] = True
++                            return set()
++
++                        from concurrent.futures import wait as _cf_wait, FIRST_COMPLETED
++
++                        done, pending = _cf_wait(
++                            pending, timeout=0.5, return_when=FIRST_COMPLETED
++                        )
++                        for future in done:
++                            try:
++                                entry = future.result()
++                            except Exception as exc:
++                                idx = futures[future]
+                                 entry = {
+                                     "task_index": idx,
+-                                    "status": "interrupted",
++                                    "status": "error",
+                                     "summary": None,
+-                                    "error": "Parent agent interrupted — child did not finish in time",
++                                    "error": str(exc),
+                                     "api_calls": 0,
+                                     "duration_seconds": 0,
+                                     "_child_role": getattr(
+@@ -3985,58 +4169,81 @@ def delegate_task(
+                                 }
+                             results.append(entry)
+                             completed_count += 1
++
++                            # Print per-task completion line above the spinner
++                            idx = entry["task_index"]
++                            label = (
++                                task_labels[idx]
++                                if idx < len(task_labels)
++                                else f"Task {idx}"
++                            )
++                            dur = entry.get("duration_seconds", 0)
++                            status = entry.get("status", "?")
++                            icon = "✓" if status == "completed" else "✗"
++                            remaining = n_tasks - completed_count
++                            completion_line = (
++                                f"{icon} [{idx+1}/{n_tasks}] {label}  ({dur}s)"
++                            )
++                            if spinner_ref:
++                                try:
++                                    spinner_ref.print_above(completion_line)
++                                except Exception:
++                                    _emit_parent_console(parent_agent, f"  {completion_line}")
++                            else:
++                                _emit_parent_console(parent_agent, f"  {completion_line}")
++
++                            # Update spinner text to show remaining count
++                            if spinner_ref and remaining > 0:
++                                try:
++                                    spinner_ref.update_text(
++                                        f"🔀 {remaining} task{'s' if remaining != 1 else ''} remaining"
++                                    )
++                                except Exception as e:
++                                    logger.debug("Spinner update_text failed: %s", e)
++                    return pending
++
++                # GPU-safe wave scheduling: cloud/exempt children are
++                # submitted immediately and never wait; distinct local
++                # presets run sequentially so the single-GPU llama-router
++                # (--models-max 1) never thrashes between them. When every
++                # task shares one resolved model there is exactly one
++                # group and this degrades to today's single submit+drain.
++                exempt_group, local_groups = _partition_gpu_waves(
++                    children, task_models, _GPU_EXEMPT_MODELS
++                )
++                pending = set()
++                pending |= _submit(exempt_group)
++                for group in local_groups:
++                    if _interrupted_flag["hit"]:
+                         break
+-
+-                    from concurrent.futures import wait as _cf_wait, FIRST_COMPLETED
+-
+-                    done, pending = _cf_wait(
+-                        pending, timeout=0.5, return_when=FIRST_COMPLETED
+-                    )
+-                    for future in done:
+-                        try:
+-                            entry = future.result()
+-                        except Exception as exc:
+-                            idx = futures[future]
+-                            entry = {
+-                                "task_index": idx,
+-                                "status": "error",
++                    grp_futures = _submit(group)
++                    pending |= grp_futures
++                    pending = _drain_until(pending, target=grp_futures)
++                if not _interrupted_flag["hit"]:
++                    pending = _drain_until(pending, target=pending)
++                elif len(results) < n_tasks:
++                    # Interrupted before every wave was even submitted: any
++                    # local group later than the interrupted one never got
++                    # a future at all. Fabricate "interrupted" entries for
++                    # those task indices too, so the result contract (one
++                    # entry per task, see docstring) holds exactly like the
++                    # pre-wave-scheduling single-submit-loop behavior did.
++                    _seen = {r["task_index"] for r in results}
++                    for i, _t, child in children:
++                        if i in _seen:
++                            continue
++                        results.append(
++                            {
++                                "task_index": i,
++                                "status": "interrupted",
+                                 "summary": None,
+-                                "error": str(exc),
++                                "error": "Parent agent interrupted — child did not finish in time",
+                                 "api_calls": 0,
+                                 "duration_seconds": 0,
+-                                "_child_role": getattr(
+-                                    _child_by_index.get(idx), "_delegate_role", None
+-                                ),
++                                "_child_role": getattr(child, "_delegate_role", None),
+                             }
+-                        results.append(entry)
+-                        completed_count += 1
+-
+-                        # Print per-task completion line above the spinner
+-                        idx = entry["task_index"]
+-                        label = (
+-                            task_labels[idx] if idx < len(task_labels) else f"Task {idx}"
+                         )
+-                        dur = entry.get("duration_seconds", 0)
+-                        status = entry.get("status", "?")
+-                        icon = "✓" if status == "completed" else "✗"
+-                        remaining = n_tasks - completed_count
+-                        completion_line = f"{icon} [{idx+1}/{n_tasks}] {label}  ({dur}s)"
+-                        if spinner_ref:
+-                            try:
+-                                spinner_ref.print_above(completion_line)
+-                            except Exception:
+-                                _emit_parent_console(parent_agent, f"  {completion_line}")
+-                        else:
+-                            _emit_parent_console(parent_agent, f"  {completion_line}")
+-
+-                        # Update spinner text to show remaining count
+-                        if spinner_ref and remaining > 0:
+-                            try:
+-                                spinner_ref.update_text(
+-                                    f"🔀 {remaining} task{'s' if remaining != 1 else ''} remaining"
+-                                )
+-                            except Exception as e:
+-                                logger.debug("Spinner update_text failed: %s", e)
++                        completed_count += 1
+ 
+             # Sort by task_index so results match input order
+             results.sort(key=lambda r: r["task_index"])
+@@ -4248,7 +4455,11 @@ def delegate_task(
+             # parent's toolsets (no model-facing toolsets arg).
+             toolsets=None,
+             role=top_role,
+-            model=creds["model"],
++            # subagent-model-routing: display-only metadata for the
++            # completion block (not routing) -- single model when uniform,
++            # else "mixed: a+b". Routing itself already resolved per-task
++            # via task_models / _resolve_task_model above.
++            model=_models_label(task_models),
+             session_key=_session_key,
+             origin_ui_session_id=_origin_ui_session_id,
+             origin_session_id=_wake_sid,
+@@ -4663,7 +4874,11 @@ def _build_tasks_param_description() -> str:
+         f"Batch mode: tasks to run in parallel (up to {max_children} for this "
+         f"user, set via delegation.max_concurrent_children). Each gets "
+         "its own subagent with isolated context and terminal session. "
+-        "When provided, top-level goal/context/role are ignored."
++        "When provided, top-level goal/context/role are ignored. Each task "
++        "may set its own 'model' to override the call-level delegation "
++        "model for that task only (omit to inherit); mixing distinct local "
++        "presets in one batch is correct but runs sequentially (slower) -- "
++        "'cloud' always runs concurrently alongside any local preset."
+     )
+ 
+ 
+@@ -4718,9 +4933,35 @@ def _build_dynamic_schema_overrides() -> dict:
+     overrides_params["properties"] = {
+         k: dict(v) for k, v in DELEGATE_TASK_SCHEMA["parameters"]["properties"].items()
+     }
++    # subagent-model-routing gotcha: the shallow `dict(v)` above only copies
++    # each TOP-LEVEL property (e.g. "tasks"), so nested structures like
++    # tasks["items"]["properties"] still point at the SAME dict objects as
++    # the static DELEGATE_TASK_SCHEMA. Mutating item_properties below
++    # in-place would corrupt the static schema process-wide the moment two
++    # get_definitions() calls ran back to back. copy.deepcopy the "items"
++    # subtree specifically before mutating it.
++    overrides_params["properties"]["tasks"]["items"] = copy.deepcopy(
++        DELEGATE_TASK_SCHEMA["parameters"]["properties"]["tasks"]["items"]
++    )
+     overrides_params["properties"]["tasks"]["description"] = _build_tasks_param_description()
+     overrides_params["properties"]["role"]["description"] = _build_role_param_description()
+ 
++    # Dynamic per-task 'model' field: enum sourced from the live allowlist
++    # (delegation.allowed_models / _DEFAULT_ALLOWED_MODELS) so the model
++    # never sees a stale hardcoded set of choices.
++    _allowed = _get_allowed_models()
++    overrides_params["properties"]["tasks"]["items"]["properties"]["model"] = {
++        "type": "string",
++        "enum": _allowed,
++        "description": (
++            "Model/preset for this task only. Omit to inherit the "
++            "call-level delegation model (today's default behavior). "
++            f"Valid choices: {', '.join(_allowed)}. Mixing distinct local "
++            "presets in one batch is correct but runs sequentially (slower) "
++            "-- see the top-level tool description."
++        ),
++    }
++
+     return {
+         "description": _build_top_level_description(),
+         "parameters": overrides_params,

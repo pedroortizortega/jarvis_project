@@ -1,5 +1,6 @@
 model:
-  default: qwen3.8-27b-iq2s
+  # qwen3 es el default para cambiar entre los modelos qwen y codexshim
+  default: qwen3
   provider: custom
   base_url: http://192.168.1.241:4000/v1
   context_length: 100000
@@ -154,6 +155,16 @@ delegation:
   max_iterations: 60
   max_concurrent_children: 2
   max_spawn_depth: 2
+  # Per-task delegate_task(tasks=[{model: ...}]) allowlist.
+  # KEEP IN SYNC with the other copy (~/.hermes/config.yaml <-> jarvis_project
+  # kubernetes/hermes/config/config.yaml). Verify:
+  #   diff <(yq '.delegation.allowed_models' ~/.hermes/config.yaml) \
+  #        <(yq '.delegation.allowed_models' kubernetes/hermes/config/config.yaml)
+  allowed_models:
+    - qwen3.5-9b
+    - qwen3.6-27b-q3
+    - qwen3.8-27b-iq2s
+    - cloud
 skills:
   creation_nudge_interval: 15
 telegram:

@@ -472,7 +472,7 @@ La entrada versionada es:
     id: llama-cpp-qwen36-27b
     mode: chat
     max_tokens: 65536
-    max_input_tokens: 49152
+    max_input_tokens: 65536
     max_output_tokens: 16384
 ```
 
